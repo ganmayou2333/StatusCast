@@ -1,0 +1,51 @@
+# StatusCast configuration.
+# Relative paths are resolved against this file's directory.
+
+[app]
+# How often the daemon aggregates and pushes a Status snapshot.
+poll_interval = 5.0
+log_level = "INFO"
+# Rotating log file; set to "" to disable file logging.
+log_file = "run/statuscast.log"
+# Creating this file asks the running daemon to shut down gracefully.
+stop_file = "run/stop.request"
+
+[battery]
+enabled = true
+# Leave empty to use the first USB-connected iPhone.
+serial = ""
+# Seconds allowed for a single pymobiledevice3 read (pairing prompt included).
+timeout = 20.0
+# Battery is polled less often than the snapshot is pushed.
+poll_interval = 10.0
+
+[media]
+enabled = true
+# "ams" uses Apple Media Service over BLE.
+# "airplay_mqtt" is a placeholder AirPlay/Shairport Sync source.
+# "none" disables media.
+source = "ams"
+# Optional BLE address, e.g. "43:96:F2:61:76:BD". Empty = auto-detect AMS.
+# The address may rotate; prefer auto-detect unless you need a fixed device.
+address = ""
+# AMS requires an authenticated BLE link on Windows. Set true and confirm the
+# pairing prompt on the iPhone (or pair it first in Windows Settings).
+pair = false
+scan_timeout = 8.0
+# Wait between reconnect/rescan attempts.
+retry_interval = 10.0
+
+# AirPlay/MQTT fallback options (used when source = "airplay_mqtt").
+mqtt_host = "127.0.0.1"
+mqtt_port = 1883
+mqtt_topic = "shairport-sync/metadata"
+
+[adapters.stdout]
+enabled = false
+
+[adapters.snapshot]
+enabled = true
+path = "run/status.json"
+
+[adapters.nekotrak]
+enabled = false

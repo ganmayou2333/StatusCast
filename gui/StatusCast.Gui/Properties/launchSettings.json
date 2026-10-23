@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "StatusCast.Gui (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "StatusCast.Gui (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# Core USB collection
+pymobiledevice3==11.43.1
+
+# Experimental BLE/AMS scripts (tests/manual/get_media.py)
+bleak>=3.0,<4
+
+# TOML fallback for Python < 3.11 (core/config.py)
+tomli>=2.0; python_version < "3.11"

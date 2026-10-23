@@ -1,0 +1,86 @@
+# =========================
+# Python
+# =========================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+
+# =========================
+# C# / .NET / WinUI 3 / Visual Studio
+# =========================
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.csproj.user
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+*.cache
+*.pdb
+*.nupkg
+*.snupkg
+project.lock.json
+
+# MSIX / Windows App SDK packaging
+AppPackages/
+BundleArtifacts/
+.winapp/
+*.msix
+*.msixupload
+*.appx
+*.appxbundle
+*.appxupload
+*.pri
+publish/
+*.pubxml
+
+# =========================
+# Runtime data
+# =========================
+run/
+*.log
+*.pid
+status.json
+.tmp-test/
+tmp/
+temp/
+
+# =========================
+# Local config / secrets
+# =========================
+config.local.toml
+.env
+.env.*
+*.pfx
+*.p12
+*.cer
+secrets.json
+
+# =========================
+# IDE / OS
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
