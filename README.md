@@ -8,6 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://www.python.org/)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![API](https://img.shields.io/badge/API-localhost%3A5099-22C55E)](http://localhost:5099/status/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
 
@@ -280,6 +281,10 @@ StatusCast/
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request。建议先创建 Issue 描述使用场景或问题，再提交改动。
+
+## License
+
+本项目基于 [MIT License](LICENSE) 开源。
 
 ## 致谢
 
