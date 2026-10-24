@@ -69,7 +69,7 @@
                         Background="#1FFFFFFF"
                         CornerRadius="12">
                         <TextBlock
-                            Text="v2.0.0"
+                            Text="v3.0.0"
                             FontSize="11"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -83,18 +83,6 @@
                             FontSize="11"
                             FontWeight="SemiBold"
                             Foreground="#7DD3FC" />
-                    </Border>
-                    <Border
-                        MaxWidth="220"
-                        Padding="10,4"
-                        Background="#1FF6C453"
-                        CornerRadius="12">
-                        <TextBlock
-                            Text="{x:Bind ViewModel.PluginSummary, Mode=OneWay}"
-                            FontSize="11"
-                            FontWeight="SemiBold"
-                            Foreground="#F6C453"
-                            TextTrimming="CharacterEllipsis" />
                     </Border>
                 </StackPanel>
             </Grid>
@@ -421,11 +409,6 @@
                                     FontSize="10"
                                     HorizontalAlignment="Right"
                                     Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                                <TextBlock
-                                    Text="{x:Bind ViewModel.PluginSummary, Mode=OneWay}"
-                                    FontSize="10"
-                                    HorizontalAlignment="Right"
-                                    Foreground="#7DD3FC" />
                             </StackPanel>
                         </Grid>
                     </Border>

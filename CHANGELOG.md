@@ -2,6 +2,16 @@
 
 All notable changes to StatusCast are documented here.
 
+## [3.0.0] - 2026-10-24
+
+### Changed
+
+- StatusCast is now a pure data layer: removed `StatusCast.Core`, `IStatusPlugin` and dynamic DLL loading.
+- Snapshot schema is now `3`; `status.json` contains only `schema`, `generatedAt` and the `devices` array.
+- Removed top-level `battery`, `media`, `plugins`, `errors` and `text` fields from the snapshot.
+- `config.json` now only contains `Aliases`.
+- Plugin and aggregation logic moved to the separate [NekoTool](https://github.com/ganmayou2333/NekoTool) repository.
+
 ## [2.0.0] - 2026-10-24
 
 ### Added

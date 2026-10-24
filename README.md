@@ -17,21 +17,22 @@
 
 ## 项目简介
 
-StatusCast 是一个运行在 Windows 上的 **桌面状态聚合平台**。
+StatusCast 是一个运行在 Windows 上的 **底层设备数据层**。
 
-它通过 **USB** 读取 iPhone、通过 **ADB** 读取 Android 的电量、充电状态、机型和媒体状态，由 **WinUI 3** 桌面应用展示，并对外提供本地 **HTTP API**，供 NekoTrak、OBS、未来的 Discord Rich Presence 或其他客户端读取。
+它通过 **USB** 读取 iPhone、通过 **ADB** 读取 Android 的电量、充电状态、机型和媒体状态，由 **WinUI 3** 桌面应用展示，并对外提供纯数据 **HTTP API**。
 
-v2.0 加入了多设备、自定义别名和动态插件系统：
+v3.0 做了彻底的分层解耦：
 
-- 一个窗口同时展示 iPhone 与 Android；
-- `config.json` 把 `iPhone15,3` 映射成“主力机”；
-- `plugins/*.dll` 可以动态扩展状态来源。
+- StatusCast 只负责采集，输出干净的 `devices` 数组；
+- 不再包含业务插件、动态 DLL 加载或插件状态；
+- 自定义别名由 `config.json` 管理；
+- 所有“缝合”、插件和展示逻辑交给 [NekoTool](https://github.com/ganmayou2333/NekoTool)。
 
 核心原则：
 
-- 一套聚合中枢，避免每个客户端反复打开 USB / ADB；
-- UI、采集和插件解耦；
-- 第三方展示端只读 v2 JSON，不直接接触设备。
+- 一套采集源，避免每个客户端反复打开 USB / ADB；
+- 核心保持纯净，只输出设备原始数据；
+- 第三方展示端只读 v3 JSON，不直接接触设备。
 
 ## 特性亮点
 
@@ -41,19 +42,16 @@ v2.0 加入了多设备、自定义别名和动态插件系统：
 - 🎨 **多设备 WinUI 3 界面**  
   MVVM + `x:Bind` + Mica 材质 + 动态电量圆环；Android 作为第二张设备卡片展示。
 
-- 🌐 **v2 本地 HTTP API**  
-  `http://localhost:5099/status/` 返回 `schema: 2`，包含 `devices` 和 `plugins` 数组。
+- 🌐 **v3 纯数据 HTTP API**  
+  `http://localhost:5099/status/` 返回 `schema: 3`，只包含 `devices` 数组。
 
 - 🏷️ **自定义别名**  
   `config.json` 把原始机型映射成“主力机 / 备用机”等显示名。
 
-- 🔌 **动态插件系统**  
-  `StatusCast.Core` 定义 `IStatusPlugin`，从 `plugins/*.dll` 加载并启用。
-
 - 🛡️ **单一数据源**  
   `StatusCoordinator` 并行采集后原子写入 `run/status.json`；其他消费者读取快照或 API。
 
-![StatusCast v2 multi-device UI](docs/screenshots/v2-multi-device.png)
+![StatusCast v3 multi-device UI](docs/screenshots/v2-multi-device.png)
 
 > 截图使用演示数据；真实数据由 USB / ADB 连接的设备提供。
 
@@ -65,9 +63,8 @@ flowchart LR
     Android["Android\nADB"] --> ADB["Python 3\nstatus_core_android.py"]
     IOS --> Coord["C# WinUI 3\nStatusCoordinator"]
     ADB --> Coord
-    Plugins["plugins/*.dll\nIStatusPlugin"] --> Coord
     Coord --> UI["WinUI 3 UI\n多设备卡片 + 电量圆环"]
-    Coord --> JSON["run/status.json\nschema: 2"]
+    Coord --> JSON["run/status.json\nschema: 3"]
     JSON --> HTTP["HTTP API\nlocalhost:5099/status/"]
     HTTP --> NekoTrak["NekoTrak"]
     HTTP --> OBS["OBS / NekoTool"]
@@ -79,10 +76,13 @@ flowchart LR
 ```text
 iPhone --USB--> status_core.py ─┐
 Android --ADB--> status_core_android.py ─┤
-plugins/*.dll --> StatusCoordinator ──────┤
+                                           ├─ StatusCoordinator
                                            ├─ WinUI 3 多设备 UI
-                                           ├─ run/status.json (schema 2)
+                                           ├─ run/status.json (schema 3)
                                            └─ HTTP API :5099
+                                                    │
+                                                    ▼
+                                      NekoTool（聚合 + 插件 + 展示）
 ```
 
 ## 快速开始
@@ -137,7 +137,7 @@ adb devices
 STATUS:BATTERY:42|CHARGING:false|MEDIA:晴天|周杰伦|playing|MODEL:Pixel 7|APP:com.tencent.mm|APPNAME:微信
 ```
 
-### 3. 配置别名与插件
+### 3. 配置别名
 
 编辑根目录 `config.json`：
 
@@ -146,21 +146,11 @@ STATUS:BATTERY:42|CHARGING:false|MEDIA:晴天|周杰伦|playing|MODEL:Pixel 7|AP
   "Aliases": {
     "iPhone15,3": "主力机",
     "Pixel 7": "备用机"
-  },
-  "EnabledPlugins": ["Clock"]
+  }
 }
 ```
 
-- `Aliases`：把原始机型映射成 UI 显示名；
-- `EnabledPlugins`：只加载这些名字的插件；留空数组即可关闭插件。
-
-构建示例插件：
-
-```powershell
-.\scripts\build_plugins.ps1
-```
-
-插件 DLL 会输出到 `plugins\ClockPlugin.dll`，重启 WinUI 后生效。
+`Aliases` 会把原始机型映射成 UI 显示名。展示层的插件与缝合不在 StatusCast 中，而是由 [NekoTool](https://github.com/ganmayou2333/NekoTool) 负责。
 
 ### 4. 编译并运行 WinUI 3
 
@@ -179,9 +169,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_gui.ps1
 
 - 主卡片显示主设备（iPhone 优先）的机型、电量圆环和状态；
 - Android 作为第二张设备卡片显示；
-- 顶部胶囊显示已启用插件的状态；
 - 每 30 秒自动刷新；
-- 状态同时写入 `run/status.json`（schema 2）。
+- 状态同时写入 `run/status.json`（schema 3，仅 `devices`）。
 
 ## 使用 HTTP API
 
@@ -201,9 +190,8 @@ Invoke-RestMethod http://localhost:5099/status/ | ConvertTo-Json -Depth 4
 
 ```json
 {
-  "schema": 2,
+  "schema": 3,
   "generatedAt": 1792848052,
-  "primaryDeviceId": "iphone",
   "devices": [
     {
       "id": "iphone",
@@ -218,8 +206,7 @@ Invoke-RestMethod http://localhost:5099/status/ | ConvertTo-Json -Depth 4
       "foregroundApp": null,
       "foregroundAppName": null,
       "updatedAt": 1792848052,
-      "error": null,
-      "text": "📱 主力机 | 🔋 87% ⚡ | 🎵 Yesterday - The Beatles"
+      "error": null
     },
     {
       "id": "android",
@@ -234,37 +221,17 @@ Invoke-RestMethod http://localhost:5099/status/ | ConvertTo-Json -Depth 4
       "foregroundApp": "com.tencent.mm",
       "foregroundAppName": "微信",
       "updatedAt": 1792848052,
-      "error": null,
-      "text": "🤖 备用机 | 🔋 42% | 🎵 晴天 - 周杰伦"
-    }
-  ],
-  "plugins": [
-    {
-      "name": "Clock",
-      "status": "🕐 21:23:47",
       "error": null
     }
-  ],
-  "battery": {
-    "level": 87,
-    "isCharging": true,
-    "updatedAt": 1792848052,
-    "error": null
-  },
-  "media": {
-    "title": "Yesterday",
-    "artist": "The Beatles",
-    "playbackState": "playing"
-  },
-  "errors": [],
-  "text": "📱 主力机 | 🔋 87% ⚡ | 🎵 Yesterday - The Beatles"
+  ]
 }
 ```
 
 说明：
 
-- `schema: 2`；`devices` 是完整设备数组，`plugins` 是插件状态；
-- 为兼容 NekoTool 等旧客户端，顶层仍保留 `battery`、`media`、`text`（取自主设备）；
+- `schema: 3`；只包含 `devices` 数组，不再有 `plugins`、`battery`、`media`、`text` 等业务字段；
+- 每个设备包含原始采集字段与别名后的 `displayName`；
+- 业务缝合、插件和展示由 NekoTool 负责；
 - API 仅绑定 `localhost`，不暴露到局域网；
 - 返回 `application/json; charset=utf-8`；
 - 快照尚未生成时返回 `503`；
@@ -340,7 +307,7 @@ ${(Invoke-RestMethod -Uri 'http://localhost:5099/status/' -UseBasicParsing).text
 StatusCast/
 ├─ status_core.py                  # iPhone USB 电量/机型采集
 ├─ status_core_android.py          # Android ADB 电量/机型/前台应用/媒体
-├─ config.json                     # Aliases + EnabledPlugins
+├─ config.json                     # Aliases
 ├─ config.toml                     # 旧版 daemon 配置（保留）
 ├─ cli/statuscast.py               # 纯命令行版本
 ├─ requirements.txt
@@ -348,23 +315,18 @@ StatusCast/
 ├─ core/                           # Python 核心/数据源
 ├─ adapters/                       # 适配器骨架
 ├─ gui/
-│  ├─ StatusCast.Core/             # IStatusPlugin + PluginHost
 │  └─ StatusCast.Gui/              # WinUI 3 桌面应用
 │     ├─ Services/
 │     │  ├─ StatusService.cs       # iPhone + Android 采集 + 共用 runner
-│     │  ├─ StatusCoordinator.cs   # Task.WhenAll + v2 快照
+│     │  ├─ StatusCoordinator.cs   # Task.WhenAll + v3 快照
 │     │  ├─ StatusSnapshot.cs
 │     │  ├─ StatusCastConfig.cs
 │     │  └─ StatusServer.cs        # localhost:5099 HTTP API
 │     ├─ ViewModels/MainViewModel.cs
-│     └─ MainWindow.xaml           # 多设备卡片、电量圆环、插件胶囊
-├─ plugins/
-│  ├─ README.md
-│  └─ ClockPlugin/                 # 示例插件源码
+│     └─ MainWindow.xaml           # 多设备卡片、电量圆环
 ├─ integrations/nekotrak/pull.ps1
 ├─ scripts/
 │  ├─ run_gui.ps1
-│  ├─ build_plugins.ps1
 │  ├─ run_daemon.ps1
 │  ├─ install_task.ps1
 │  └─ probe_ams.py
@@ -379,6 +341,8 @@ StatusCast/
 └─ run/                            # 运行时快照（不提交）
 ```
 
+展示与插件层在独立仓库：[NekoTool](https://github.com/ganmayou2333/NekoTool)。
+
 ## 已知问题 / Roadmap
 
 ### 已完成
@@ -386,9 +350,9 @@ StatusCast/
 - [x] USB 读取 iPhone 电量、充电状态与机型
 - [x] ADB 读取 Android 电量、机型、前台应用与媒体状态
 - [x] iPhone + Android `Task.WhenAll` 并行采集
-- [x] v2 多设备快照（`devices` 数组）
+- [x] v3 多设备快照（仅 `devices` 数组）
 - [x] `config.json` 自定义别名
-- [x] `IStatusPlugin` 动态插件系统 + Clock 示例
+- [x] v3 纯 `devices` JSON（插件逻辑移至 NekoTool）
 - [x] WinUI 3 多设备展示 + MVVM + Mica + 动态电量圆环
 - [x] 纯命令行输出（文本 / JSON / watch 模式）
 - [x] 本地 HTTP 广播服务 `http://localhost:5099/status/`
@@ -432,13 +396,6 @@ StatusCast/
 
 修改 `config.json` 后需要重启 StatusCast。
 
-### 插件没有加载
-
-- DLL 必须直接放在仓库根目录的 `plugins/` 下；
-- `PluginName` 必须出现在 `EnabledPlugins` 数组里；
-- 插件需要引用 `StatusCast.Core` 并实现 `IStatusPlugin`；
-- 重启 WinUI，查看顶部插件胶囊或 `run/status.json` 的 `plugins` 数组。
-
 ### 页面显示“设备未连接”
 
 先运行：
@@ -455,7 +412,7 @@ StatusCast/
 
 ## 版本与发布
 
-- 当前版本：`v2.0.0`
+- 当前版本：`v3.0.0`
 - 发布页：[GitHub Releases](https://github.com/ganmayou2333/StatusCast/releases)
 - 变更记录：[CHANGELOG.md](CHANGELOG.md)
 

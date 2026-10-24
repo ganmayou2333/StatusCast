@@ -10,8 +10,6 @@ public sealed class StatusCastConfig
     public Dictionary<string, string> Aliases { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public List<string> EnabledPlugins { get; init; } = new();
-
     public static StatusCastConfig Load(string root)
     {
         var path = Path.Combine(root, "config.json");
@@ -40,7 +38,6 @@ public sealed class StatusCastConfig
                 Aliases = new Dictionary<string, string>(
                     loaded.Aliases ?? new Dictionary<string, string>(),
                     StringComparer.OrdinalIgnoreCase),
-                EnabledPlugins = loaded.EnabledPlugins ?? new List<string>(),
             };
         }
         catch (Exception)

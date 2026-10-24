@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using StatusCast.Core;
 
 namespace StatusCast_Gui.Services;
 
@@ -32,16 +31,14 @@ public sealed class StatusCoordinator
         var config = StatusCastConfig.Load(root);
         var iphoneTask = _iphoneService.ReadAsync(cancellationToken);
         var androidTask = _androidService.ReadAsync(cancellationToken);
-        var pluginTask = FetchPluginsAsync(root, config, cancellationToken);
 
-        await Task.WhenAll(iphoneTask, androidTask, pluginTask);
+        await Task.WhenAll(iphoneTask, androidTask);
 
         var devices = new List<DeviceStatus>
         {
             ApplyAlias(await iphoneTask, config),
             ApplyAlias(await androidTask, config),
         };
-        var plugins = await pluginTask;
         var primary = devices.FirstOrDefault(IsAvailable) ?? devices[0];
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
@@ -49,7 +46,6 @@ public sealed class StatusCoordinator
         {
             GeneratedAt = now,
             Devices = devices,
-            Plugins = plugins,
             Primary = primary,
         };
 
@@ -79,7 +75,6 @@ public sealed class StatusCoordinator
         {
             GeneratedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Devices = new[] { iphone, android },
-            Plugins = Array.Empty<PluginStatus>(),
             Primary = iphone,
         };
     }
@@ -102,59 +97,16 @@ public sealed class StatusCoordinator
             && (status.BatteryLevel is not null || status.DeviceModel is not null);
     }
 
-    private async Task<IReadOnlyList<PluginStatus>> FetchPluginsAsync(
-        string root,
-        StatusCastConfig config,
-        CancellationToken cancellationToken)
-    {
-        var pluginDirectory = Path.Combine(root, "plugins");
-        var plugins = PluginHost.Load(pluginDirectory, config.EnabledPlugins);
-        if (plugins.Count == 0)
-        {
-            return Array.Empty<PluginStatus>();
-        }
-
-        var tasks = plugins.Select(plugin => FetchPluginAsync(plugin, cancellationToken));
-        return await Task.WhenAll(tasks);
-    }
-
-    private static async Task<PluginStatus> FetchPluginAsync(
-        PluginRegistration plugin,
-        CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(3));
-        try
-        {
-            var status = await plugin.Instance.FetchStatusAsync(timeout.Token);
-            return new PluginStatus
-            {
-                Name = plugin.Name,
-                Status = string.IsNullOrWhiteSpace(status) ? null : status.Trim(),
-            };
-        }
-        catch (Exception ex)
-        {
-            return new PluginStatus
-            {
-                Name = plugin.Name,
-                Error = ex.Message,
-            };
-        }
-    }
-
     private async Task WriteSnapshotAsync(
         string root,
         StatusSnapshot snapshot,
         CancellationToken cancellationToken)
     {
         var now = snapshot.GeneratedAt;
-        var primary = snapshot.Primary;
         var payload = new
         {
-            schema = 2,
+            schema = 3,
             generatedAt = now,
-            primaryDeviceId = primary.DeviceId,
             devices = snapshot.Devices.Select(device => new
             {
                 id = device.DeviceId,
@@ -170,41 +122,7 @@ public sealed class StatusCoordinator
                 foregroundAppName = device.ForegroundAppName,
                 updatedAt = now,
                 error = device.Error,
-                text = device.Text,
             }).ToArray(),
-            plugins = snapshot.Plugins.Select(plugin => new
-            {
-                name = plugin.Name,
-                status = plugin.Status,
-                error = plugin.Error,
-            }).ToArray(),
-            battery = new
-            {
-                level = primary.BatteryLevel,
-                isCharging = primary.IsCharging,
-                updatedAt = now,
-                error = primary.Error,
-            },
-            media = new
-            {
-                title = primary.MediaTitle,
-                artist = primary.MediaArtist,
-                album = (string?)null,
-                playbackState = primary.MediaState,
-                durationSeconds = (double?)null,
-                elapsedSeconds = (double?)null,
-                playerName = (string?)null,
-                updatedAt = now,
-                error = (string?)null,
-            },
-            errors = snapshot.Devices
-                .Where(device => !string.IsNullOrWhiteSpace(device.Error))
-                .Select(device => $"{device.DisplayName}: {device.Error}")
-                .Concat(snapshot.Plugins
-                    .Where(plugin => !string.IsNullOrWhiteSpace(plugin.Error))
-                    .Select(plugin => $"{plugin.Name}: {plugin.Error}"))
-                .ToArray(),
-            text = primary.Text,
         };
 
         var runDirectory = Path.Combine(root, "run");

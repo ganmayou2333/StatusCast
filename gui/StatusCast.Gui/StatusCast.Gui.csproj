@@ -49,10 +49,6 @@
     <PropertyGroup> above to opt out.
   -->
   <ItemGroup>
-    <ProjectReference Include="..\StatusCast.Core\StatusCast.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.7.1" />

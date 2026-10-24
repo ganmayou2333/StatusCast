@@ -22,7 +22,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _androidMediaDisplay = "🎵 --";
     private string _androidAppDisplay = "—";
     private string _androidStateDisplay = "未连接";
-    private string _pluginSummary = "无插件";
     private bool _hasAndroid;
     private int? _batteryLevel;
     private double _batteryPercent;
@@ -93,12 +92,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _androidStateDisplay;
         private set => SetField(ref _androidStateDisplay, value);
-    }
-
-    public string PluginSummary
-    {
-        get => _pluginSummary;
-        private set => SetField(ref _pluginSummary, value);
     }
 
     public bool HasAndroid
@@ -222,13 +215,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         AndroidMediaDisplay = android?.MediaDisplay ?? "🎵 --";
         AndroidAppDisplay = android?.AppDisplay ?? "—";
         AndroidStateDisplay = android?.Error ?? $"更新于 {DateTime.Now:HH:mm:ss}";
-
-        PluginSummary = snapshot.Plugins.Count == 0
-            ? "无插件"
-            : string.Join(
-                " · ",
-                snapshot.Plugins.Select(plugin =>
-                    plugin.Status is null ? plugin.Name : $"{plugin.Name}: {plugin.Status}"));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
