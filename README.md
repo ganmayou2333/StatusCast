@@ -227,7 +227,7 @@ dotnet publish .\src\StatusCast.Daemon\StatusCast.Daemon.csproj `
 以管理员身份注册服务：
 
 ```powershell
-sc.exe create StatusCast binPath= "G:\StatusCast\dist\StatusCast.Daemon.exe" start= auto
+sc.exe create StatusCast binPath= "G:\StatusCast\StatusCast\dist\StatusCast.Daemon.exe" start= auto
 sc.exe start StatusCast
 ```
 
@@ -248,13 +248,13 @@ NekoTool 的 `launch_and_pull.ps1` 会检测 API，未运行时启动 `StatusCas
 NekoTrak 自定义文本：
 
 ```text
-${(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "G:\NekoTool\scripts\launch_and_pull.ps1")}
+${(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "G:\StatusCast\NekoTool\scripts\launch_and_pull.ps1")}
 ```
 
 首次配置：
 
 ```powershell
-cd G:\NekoTool
+cd G:\StatusCast\NekoTool
 .\setup.ps1
 ```
 
