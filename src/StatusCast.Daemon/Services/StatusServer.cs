@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace StatusCast_Gui.Services;
+namespace StatusCast.Daemon.Services;
 
 public sealed class StatusServer : IDisposable
 {
@@ -223,39 +223,7 @@ public sealed class StatusServer : IDisposable
 
     private static string ResolveSnapshotPath()
     {
-        var starts = new[]
-        {
-            Environment.GetEnvironmentVariable("STATUSCAST_ROOT"),
-            AppContext.BaseDirectory,
-            Environment.CurrentDirectory,
-        };
-
-        foreach (var start in starts)
-        {
-            if (string.IsNullOrWhiteSpace(start))
-            {
-                continue;
-            }
-
-            DirectoryInfo? directory;
-            try
-            {
-                directory = new DirectoryInfo(start);
-            }
-            catch (Exception)
-            {
-                continue;
-            }
-
-            for (var depth = 0; directory is not null && depth < 12; depth++, directory = directory.Parent)
-            {
-                if (File.Exists(Path.Combine(directory.FullName, "status_core.py")))
-                {
-                    return Path.Combine(directory.FullName, "run", "status.json");
-                }
-            }
-        }
-
-        return Path.Combine(AppContext.BaseDirectory, "run", "status.json");
+        var root = ProjectLocator.FindRoot();
+        return Path.Combine(root ?? AppContext.BaseDirectory, "run", "status.json");
     }
 }

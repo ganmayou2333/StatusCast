@@ -2,6 +2,17 @@
 
 All notable changes to StatusCast are documented here.
 
+## [3.1.0] - 2026-10-24
+
+### Changed
+
+- Removed the WinUI 3 GUI and all Windows App SDK dependencies.
+- Added the headless `StatusCast.Daemon` console application.
+- Moved `StatusService`, `AndroidStatusService`, `StatusCoordinator` and `StatusServer` into `src/StatusCast.Daemon/Services`.
+- Added colored startup/collection logs and graceful Ctrl+C shutdown.
+- Added `scripts/run_daemon.ps1` and silent/service deployment notes.
+- NekoTool now targets `StatusCast.Daemon.exe` for watchdog startup.
+
 ## [3.0.0] - 2026-10-24
 
 ### Changed

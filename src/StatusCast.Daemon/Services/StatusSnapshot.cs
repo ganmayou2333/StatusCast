@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace StatusCast_Gui.Services;
+namespace StatusCast.Daemon.Services;
 
 public sealed class StatusSnapshot
 {

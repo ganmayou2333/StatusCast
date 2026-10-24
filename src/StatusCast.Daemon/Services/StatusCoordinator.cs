@@ -6,7 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace StatusCast_Gui.Services;
+namespace StatusCast.Daemon.Services;
 
 public sealed class StatusCoordinator
 {

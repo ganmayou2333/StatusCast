@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace StatusCast_Gui.Services;
+namespace StatusCast.Daemon.Services;
 
 public sealed class StatusCastConfig
 {

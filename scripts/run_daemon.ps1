@@ -1,54 +1,30 @@
-﻿#requires -Version 5.1
-<#
-.SYNOPSIS
-    Start the resident StatusCast daemon.
-
-.DESCRIPTION
-    Runs core.daemon in the foreground so a scheduler, terminal, or the display
-    target can own the process lifetime. Use -Once for a single collection and
-    snapshot write, or -Stop to ask a running daemon to shut down.
-
-.EXAMPLE
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_daemon.ps1
-
-.EXAMPLE
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_daemon.ps1 -Once
-
-.EXAMPLE
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_daemon.ps1 -Stop
-#>
-[CmdletBinding()]
-param(
-    [string]$Config,
-    [switch]$Once,
-    [switch]$Stop
+﻿param(
+    [string]$Configuration = 'Debug',
+    [switch]$Hidden
 )
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+$project = Join-Path $root 'src\StatusCast.Daemon\StatusCast.Daemon.csproj'
+$exe = Join-Path $root "src\StatusCast.Daemon\bin\$Configuration\net10.0\StatusCast.Daemon.exe"
 
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
-$PythonExe = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
-
-if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
-    [Console]::Error.WriteLine("Python venv not found: $PythonExe")
-    [Console]::Error.WriteLine("Run: py -3 -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r requirements.txt")
-    exit 3
+if (-not (Test-Path -LiteralPath $project)) {
+    throw "Daemon project not found: $project"
 }
 
-if ([string]::IsNullOrWhiteSpace($Config)) {
-    $Config = Join-Path $ProjectRoot 'config.toml'
+if (-not (Test-Path -LiteralPath $exe)) {
+    dotnet build $project -c $Configuration
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Daemon build failed.'
+    }
 }
 
-Set-Location -LiteralPath $ProjectRoot
-
-$Arguments = @('-m', 'core.daemon', '--config', $Config)
-if ($Once) {
-    $Arguments += '--once'
-}
-if ($Stop) {
-    $Arguments += '--stop'
+if ($Hidden) {
+    Start-Process -FilePath $exe -WorkingDirectory $root -WindowStyle Hidden | Out-Null
+    Write-Host "StatusCast.Daemon started hidden."
+    return
 }
 
-& $PythonExe @Arguments
+Set-Location -LiteralPath $root
+& $exe
 exit $LASTEXITCODE

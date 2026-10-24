@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace StatusCast_Gui.Services;
+namespace StatusCast.Daemon.Services;
 
 public static class ProjectLocator
 {
