@@ -16,8 +16,7 @@ public sealed class StatusCoordinator
         WriteIndented = true,
     };
 
-    private readonly StatusService _iphoneService = new();
-    private readonly AndroidStatusService _androidService = new();
+    private readonly StatusService _statusService = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     public async Task<StatusSnapshot> ReadAsync(CancellationToken cancellationToken = default)
@@ -29,16 +28,15 @@ public sealed class StatusCoordinator
         }
 
         var config = StatusCastConfig.Load(root);
-        var iphoneTask = _iphoneService.ReadAsync(cancellationToken);
-        var androidTask = _androidService.ReadAsync(cancellationToken);
+        var devices = (await _statusService.ReadAsync(cancellationToken))
+            .Select(device => ApplyAlias(device, config))
+            .ToList();
 
-        await Task.WhenAll(iphoneTask, androidTask);
-
-        var devices = new List<DeviceStatus>
+        if (devices.Count == 0)
         {
-            ApplyAlias(await iphoneTask, config),
-            ApplyAlias(await androidTask, config),
-        };
+            return await BuildUnknownSnapshotAsync("Python 未返回设备", cancellationToken);
+        }
+
         var primary = devices.FirstOrDefault(IsAvailable) ?? devices[0];
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 

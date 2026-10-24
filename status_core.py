@@ -1,92 +1,92 @@
 #!/usr/bin/env python3
-import asyncio
+"""StatusCast Python dispatcher.
+
+Runs every registered collector, isolates failures per device, and prints one
+standard JSON snapshot (the same shape the daemon writes to run/status.json):
+
+    {
+      "schema": 3,
+      "generatedAt": 1792860000,
+      "devices": [
+        {"id": "iphone", "platform": "ios", ..., "error": null},
+        {"id": "android", "platform": "android", ..., "error": null}
+      ]
+    }
+
+A disconnected device only sets ``error`` on its own entry; it never prevents
+the other collector from returning data.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
 import sys
+import time
+from typing import Any
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
-from dataclasses import dataclass
-
-from pymobiledevice3.lockdown import create_using_usbmux
-from pymobiledevice3.services.diagnostics import DiagnosticsService
+from collectors.android_collector import AndroidCollector
+from collectors.iphone_collector import IPhoneCollector
 
 
-@dataclass
-class Status:
-    battery_level: int | None = None
-    is_charging: bool | None = None
-    media_title: str | None = None
-    media_artist: str | None = None
-    media_state: str = "unknown"
-    device_model: str | None = None
+def collect_all(
+    adb: str | None = None,
+    serial: str | None = None,
+) -> dict[str, Any]:
+    """Run all collectors and merge the results into one snapshot dict."""
+    collectors = [
+        IPhoneCollector(),
+        AndroidCollector(adb=adb, serial=serial),
+    ]
 
-
-class BatterySource:
-    """USB battery source, reusing the validated get_battery.py approach."""
-
-    async def fetch(self, status: Status) -> Status:
+    devices: list[dict[str, Any]] = []
+    for collector in collectors:
         try:
-            async with await create_using_usbmux(
-                connection_type="USB"
-            ) as lockdown:
-                status.device_model = (lockdown.all_values or {}).get(
-                    "ProductType"
-                )
-                async with DiagnosticsService(lockdown=lockdown) as diagnostics:
-                    info = await diagnostics.get_battery()
+            devices.append(collector.get_data())
+        except Exception as exc:
+            message = str(exc) or exc.__class__.__name__
+            devices.append(collector.error_payload(message))
 
-            level = info.get(
-                "BatteryCurrentCapacity", info.get("CurrentCapacity")
-            )
-            charging = info.get("BatteryIsCharging", info.get("IsCharging"))
-            if level is None or charging is None:
-                return status
-
-            status.battery_level = int(level)
-            if isinstance(charging, str):
-                status.is_charging = charging.strip().lower() in {
-                    "1",
-                    "true",
-                    "yes",
-                }
-            else:
-                status.is_charging = bool(charging)
-        except Exception:
-            pass
-        return status
+    return {
+        "schema": 3,
+        "generatedAt": int(time.time()),
+        "devices": devices,
+    }
 
 
-class MediaSource:
-    """Music source placeholder.
-
-    AMS 待蓝牙硬件就绪后接入。
-    """
-
-    def fetch(self, status: Status) -> Status:
-        return status
-
-
-async def main() -> int:
-    status = Status()
-    status = await BatterySource().fetch(status)
-    status = MediaSource().fetch(status)
-
-    battery = "NA" if status.battery_level is None else str(status.battery_level)
-    charging = (
-        "NA" if status.is_charging is None else str(status.is_charging).lower()
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Collect iPhone + Android status and print one JSON snapshot."
     )
-    title = status.media_title or "NA"
-    artist = status.media_artist or "NA"
-    state = status.media_state or "unknown"
-    model = status.device_model or "NA"
-
-    print(
-        f"STATUS:BATTERY:{battery}|CHARGING:{charging}"
-        f"|MEDIA:{title}|{artist}|{state}|MODEL:{model}"
+    parser.add_argument(
+        "--adb",
+        default=None,
+        help="adb executable (default: ADB env var or 'adb')",
     )
+    parser.add_argument(
+        "--serial",
+        default=None,
+        help="Android serial (default: ANDROID_SERIAL env var)",
+    )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Pretty-print the JSON output (default: compact one-line JSON).",
+    )
+    args = parser.parse_args()
+
+    payload = collect_all(adb=args.adb, serial=args.serial)
+    if args.pretty:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(main())

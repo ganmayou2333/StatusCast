@@ -31,7 +31,7 @@ internal static class UpdateChecker
             Timeout = TimeSpan.FromSeconds(8),
         };
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("StatusCast-Daemon", "3.2.0"));
+            new ProductInfoHeaderValue("StatusCast-Daemon", GetCurrentVersion().ToString()));
         client.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return client;

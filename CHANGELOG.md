@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
 
+## [3.3.0] - 2026-10-25
+
+### Added
+
+- Pluggable Python collector architecture under `collectors/`:
+  `BaseCollector` (`get_data() -> dict`), `CollectorError`,
+  `IPhoneCollector` and `AndroidCollector`.
+- `status_core.py` is now the single dispatcher: it runs every collector,
+  isolates failures per device and prints one standard schema-3 JSON snapshot.
+- `status_core_android.py` kept as a legacy STATUS-line compatibility CLI for
+  manual diagnostics.
+
+### Changed
+
+- C# `StatusService` now executes one `status_core.py` process and parses its
+  JSON `devices` array instead of running two Python scripts and matching text
+  with a regex.
+- `StatusCoordinator` consumes the parsed device list, applies aliases and
+  writes the snapshot; collection errors no longer abort the whole refresh.
+- Bumped the daemon to `<Version>3.3.0</Version>`; startup log and update
+  checker user agent follow the assembly version.
+
+### Removed
+
+- Duplicate per-device Python entry points from the daemon call path; all device
+  collection now flows through the collector plugins.
+
 ## [3.2.0] - 2026-10-25
 
 ### Added

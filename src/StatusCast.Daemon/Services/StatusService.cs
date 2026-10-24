@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -88,63 +91,38 @@ public sealed class DeviceStatus
     };
 }
 
+/// <summary>
+/// Runs the modular Python dispatcher (status_core.py) and turns its JSON
+/// snapshot into DeviceStatus objects.
+/// </summary>
 public sealed class StatusService
 {
-    public Task<DeviceStatus> ReadAsync(CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<DeviceStatus>> ReadAsync(
+        CancellationToken cancellationToken = default)
     {
-        return PythonStatusRunner.ReadAsync(
-            "status_core.py",
-            "ios",
-            "iphone",
-            cancellationToken);
-    }
-}
-
-public sealed class AndroidStatusService
-{
-    public Task<DeviceStatus> ReadAsync(CancellationToken cancellationToken = default)
-    {
-        return PythonStatusRunner.ReadAsync(
-            "status_core_android.py",
-            "android",
-            "android",
-            cancellationToken);
+        return PythonStatusRunner.ReadAsync(cancellationToken);
     }
 }
 
 internal static class PythonStatusRunner
 {
-    private static readonly Regex StatusPattern = new(
-        @"^STATUS:BATTERY:([^|]+)\|CHARGING:([^|]+)\|MEDIA:([^|]*)\|([^|]*)\|([^|]*)\|MODEL:([^|]*)(?:\|APP:([^|]*)\|APPNAME:([^|]*))?$",
-        RegexOptions.Compiled);
+    private const string ScriptName = "status_core.py";
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
-    public static async Task<DeviceStatus> ReadAsync(
-        string scriptName,
-        string platform,
-        string deviceId,
+    public static async Task<IReadOnlyList<DeviceStatus>> ReadAsync(
         CancellationToken cancellationToken)
     {
         var root = ProjectLocator.FindRoot();
         if (root is null)
         {
-            return new DeviceStatus
-            {
-                Platform = platform,
-                DeviceId = deviceId,
-                Error = "找不到项目根目录（status_core.py）",
-            };
+            return ErrorDevices("找不到项目根目录（status_core.py）");
         }
 
-        var python = System.IO.Path.Combine(root, ".venv", "Scripts", "python.exe");
-        var script = System.IO.Path.Combine(root, scriptName);
-        if (!System.IO.File.Exists(python) || !System.IO.File.Exists(script))
+        var python = Path.Combine(root, ".venv", "Scripts", "python.exe");
+        var script = Path.Combine(root, ScriptName);
+        if (!File.Exists(python) || !File.Exists(script))
         {
-            return new DeviceStatus
-            {
-                Platform = platform,
-                DeviceId = deviceId,
-                Error = $"找不到 {scriptName} 或 .venv\\Scripts\\python.exe",
-            };
+            return ErrorDevices($"找不到 {ScriptName} 或 .venv\\Scripts\\python.exe");
         }
 
         var startInfo = new ProcessStartInfo
@@ -165,19 +143,14 @@ internal static class PythonStatusRunner
             using var process = Process.Start(startInfo);
             if (process is null)
             {
-                return new DeviceStatus
-                {
-                    Platform = platform,
-                    DeviceId = deviceId,
-                    Error = "无法启动 Python 进程",
-                };
+                return ErrorDevices("无法启动 Python 进程");
             }
 
             var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
             var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            timeout.CancelAfter(Timeout);
             try
             {
                 await process.WaitForExitAsync(timeout.Token);
@@ -192,96 +165,143 @@ internal static class PythonStatusRunner
                 {
                 }
 
-                return new DeviceStatus
-                {
-                    Platform = platform,
-                    DeviceId = deviceId,
-                    Error = "读取超时",
-                };
+                return ErrorDevices("读取超时");
             }
 
             var stdout = (await stdoutTask).Trim();
             var stderr = (await stderrTask).Trim();
             if (process.ExitCode != 0)
             {
-                return new DeviceStatus
-                {
-                    Platform = platform,
-                    DeviceId = deviceId,
-                    Error = string.IsNullOrWhiteSpace(stderr)
-                        ? $"{scriptName} 退出码 {process.ExitCode}"
-                        : stderr,
-                };
+                return ErrorDevices(string.IsNullOrWhiteSpace(stderr)
+                    ? $"{ScriptName} 退出码 {process.ExitCode}"
+                    : stderr);
             }
 
-            var match = StatusPattern.Match(stdout);
-            if (!match.Success)
+            if (string.IsNullOrWhiteSpace(stdout))
             {
-                return new DeviceStatus
-                {
-                    Platform = platform,
-                    DeviceId = deviceId,
-                    Error = "无法解析 Python 输出",
-                };
+                return ErrorDevices("Python 未返回数据");
             }
 
-            var batteryLevel = ParseBattery(match.Groups[1].Value);
-            var deviceModel = Normalize(match.Groups[6].Value);
-            if (batteryLevel is null && deviceModel is null)
-            {
-                return new DeviceStatus
-                {
-                    Platform = platform,
-                    DeviceId = deviceId,
-                    Error = platform == "android"
-                        ? "未检测到 Android 设备"
-                        : "未检测到 iPhone",
-                };
-            }
-
-            return new DeviceStatus
-            {
-                Platform = platform,
-                DeviceId = deviceId,
-                BatteryLevel = batteryLevel,
-                IsCharging = ParseCharging(match.Groups[2].Value),
-                MediaTitle = Normalize(match.Groups[3].Value),
-                MediaArtist = Normalize(match.Groups[4].Value),
-                MediaState = Normalize(match.Groups[5].Value) ?? "unknown",
-                DeviceModel = deviceModel,
-                ForegroundApp = Normalize(match.Groups[7].Value),
-                ForegroundAppName = Normalize(match.Groups[8].Value),
-            };
+            return ParseDevices(stdout);
+        }
+        catch (JsonException ex)
+        {
+            return ErrorDevices($"无法解析 Python JSON：{ex.Message}");
         }
         catch (Exception ex)
         {
-            return new DeviceStatus
-            {
-                Platform = platform,
-                DeviceId = deviceId,
-                Error = ex.Message,
-            };
+            return ErrorDevices(ex.Message);
         }
     }
 
-    private static int? ParseBattery(string value)
+    private static IReadOnlyList<DeviceStatus> ParseDevices(string stdout)
     {
-        return int.TryParse(value.Trim(), out var level) ? level : null;
+        using var document = JsonDocument.Parse(stdout);
+        var devices = new List<DeviceStatus>();
+
+        if (document.RootElement.TryGetProperty("devices", out var array)
+            && array.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in array.EnumerateArray())
+            {
+                devices.Add(ParseDevice(item));
+            }
+        }
+
+        EnsureDevice(devices, "ios", "iphone");
+        EnsureDevice(devices, "android", "android");
+        return devices;
     }
 
-    private static bool? ParseCharging(string value)
+    private static DeviceStatus ParseDevice(JsonElement item)
     {
-        return value.Trim().ToLowerInvariant() switch
+        return new DeviceStatus
         {
-            "true" => true,
-            "false" => false,
-            _ => null,
+            Platform = GetString(item, "platform") ?? "unknown",
+            DeviceId = GetString(item, "id") ?? "unknown",
+            BatteryLevel = GetInt(item, "batteryLevel"),
+            IsCharging = GetBool(item, "isCharging"),
+            MediaTitle = GetString(item, "mediaTitle"),
+            MediaArtist = GetString(item, "mediaArtist"),
+            MediaState = GetString(item, "mediaState") ?? "unknown",
+            DeviceModel = GetString(item, "model"),
+            ForegroundApp = GetString(item, "foregroundApp"),
+            ForegroundAppName = GetString(item, "foregroundAppName"),
+            Error = GetString(item, "error"),
         };
     }
 
-    private static string? Normalize(string value)
+    private static void EnsureDevice(
+        ICollection<DeviceStatus> devices,
+        string platform,
+        string deviceId)
     {
-        var trimmed = value.Trim();
-        return trimmed is "" or "NA" ? null : trimmed;
+        if (devices.Any(device =>
+                string.Equals(device.Platform, platform, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        devices.Add(new DeviceStatus
+        {
+            Platform = platform,
+            DeviceId = deviceId,
+            Error = "Python 未返回该设备",
+        });
+    }
+
+    private static IReadOnlyList<DeviceStatus> ErrorDevices(string error)
+    {
+        return new[]
+        {
+            new DeviceStatus
+            {
+                Platform = "ios",
+                DeviceId = "iphone",
+                Error = error,
+            },
+            new DeviceStatus
+            {
+                Platform = "android",
+                DeviceId = "android",
+                Error = error,
+            },
+        };
+    }
+
+    private static string? GetString(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value)
+            || value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
+
+    private static int? GetInt(JsonElement element, string name)
+    {
+        return element.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+            ? number
+            : null;
+    }
+
+    private static bool? GetBool(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null,
+        };
     }
 }
