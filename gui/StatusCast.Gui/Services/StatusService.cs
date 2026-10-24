@@ -1,8 +1,6 @@
 using System;
 using System.Diagnostics;
-using System.IO;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,12 +9,17 @@ namespace StatusCast_Gui.Services;
 
 public sealed class DeviceStatus
 {
+    public string Platform { get; init; } = "ios";
+    public string DeviceId { get; init; } = "iphone";
     public int? BatteryLevel { get; init; }
     public bool? IsCharging { get; init; }
     public string? MediaTitle { get; init; }
     public string? MediaArtist { get; init; }
     public string MediaState { get; init; } = "unknown";
     public string? DeviceModel { get; init; }
+    public string? Alias { get; init; }
+    public string? ForegroundApp { get; init; }
+    public string? ForegroundAppName { get; init; }
     public string? Error { get; init; }
 
     public string ModelDisplay => DeviceModel switch
@@ -25,6 +28,11 @@ public sealed class DeviceStatus
         "iPhone14,3" => "13 Pro Max",
         _ => DeviceModel ?? "未知机型",
     };
+
+    public string DisplayName =>
+        string.IsNullOrWhiteSpace(Alias) ? ModelDisplay : Alias;
+
+    public string PlatformIcon => Platform == "android" ? "🤖" : "📱";
 
     public string BatteryDisplay
     {
@@ -45,49 +53,104 @@ public sealed class DeviceStatus
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(MediaTitle)
-                || string.IsNullOrWhiteSpace(MediaArtist)
-                || MediaTitle == "NA"
-                || MediaArtist == "NA")
+            if (string.IsNullOrWhiteSpace(MediaTitle))
             {
                 return "🎵 暂无播放";
             }
 
-            return $"🎵 {MediaTitle} - {MediaArtist}";
+            return string.IsNullOrWhiteSpace(MediaArtist)
+                ? $"🎵 {MediaTitle}"
+                : $"🎵 {MediaTitle} - {MediaArtist}";
         }
     }
+
+    public string AppDisplay =>
+        string.IsNullOrWhiteSpace(ForegroundAppName)
+            ? ForegroundApp ?? "—"
+            : ForegroundAppName;
+
+    public string Text => $"{PlatformIcon} {DisplayName} | {BatteryDisplay} | {MediaDisplay}";
+
+    public DeviceStatus WithAlias(string? alias) => new()
+    {
+        Platform = Platform,
+        DeviceId = DeviceId,
+        BatteryLevel = BatteryLevel,
+        IsCharging = IsCharging,
+        MediaTitle = MediaTitle,
+        MediaArtist = MediaArtist,
+        MediaState = MediaState,
+        DeviceModel = DeviceModel,
+        Alias = alias,
+        ForegroundApp = ForegroundApp,
+        ForegroundAppName = ForegroundAppName,
+        Error = Error,
+    };
 }
 
 public sealed class StatusService
 {
+    public Task<DeviceStatus> ReadAsync(CancellationToken cancellationToken = default)
+    {
+        return PythonStatusRunner.ReadAsync(
+            "status_core.py",
+            "ios",
+            "iphone",
+            cancellationToken);
+    }
+}
+
+public sealed class AndroidStatusService
+{
+    public Task<DeviceStatus> ReadAsync(CancellationToken cancellationToken = default)
+    {
+        return PythonStatusRunner.ReadAsync(
+            "status_core_android.py",
+            "android",
+            "android",
+            cancellationToken);
+    }
+}
+
+internal static class PythonStatusRunner
+{
     private static readonly Regex StatusPattern = new(
-        @"^STATUS:BATTERY:([^|]+)\|CHARGING:([^|]+)\|MEDIA:([^|]*)\|([^|]*)\|([^|]*)\|MODEL:([^|]*)$",
+        @"^STATUS:BATTERY:([^|]+)\|CHARGING:([^|]+)\|MEDIA:([^|]*)\|([^|]*)\|([^|]*)\|MODEL:([^|]*)(?:\|APP:([^|]*)\|APPNAME:([^|]*))?$",
         RegexOptions.Compiled);
 
-    private static readonly JsonSerializerOptions SnapshotJsonOptions = new()
+    public static async Task<DeviceStatus> ReadAsync(
+        string scriptName,
+        string platform,
+        string deviceId,
+        CancellationToken cancellationToken)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
-    };
-
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
-
-    public async Task<DeviceStatus> ReadAsync(CancellationToken cancellationToken = default)
-    {
-        var paths = FindPaths();
-        if (paths is null)
+        var root = ProjectLocator.FindRoot();
+        if (root is null)
         {
             return new DeviceStatus
             {
-                Error = "找不到 .venv\\Scripts\\python.exe 或 status_core.py",
+                Platform = platform,
+                DeviceId = deviceId,
+                Error = "找不到项目根目录（status_core.py）",
             };
         }
 
-        var (python, script, workingDirectory) = paths.Value;
+        var python = System.IO.Path.Combine(root, ".venv", "Scripts", "python.exe");
+        var script = System.IO.Path.Combine(root, scriptName);
+        if (!System.IO.File.Exists(python) || !System.IO.File.Exists(script))
+        {
+            return new DeviceStatus
+            {
+                Platform = platform,
+                DeviceId = deviceId,
+                Error = $"找不到 {scriptName} 或 .venv\\Scripts\\python.exe",
+            };
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = python,
-            WorkingDirectory = workingDirectory,
+            WorkingDirectory = root,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -102,7 +165,12 @@ public sealed class StatusService
             using var process = Process.Start(startInfo);
             if (process is null)
             {
-                return new DeviceStatus { Error = "无法启动 Python 进程" };
+                return new DeviceStatus
+                {
+                    Platform = platform,
+                    DeviceId = deviceId,
+                    Error = "无法启动 Python 进程",
+                };
             }
 
             var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -124,7 +192,12 @@ public sealed class StatusService
                 {
                 }
 
-                return new DeviceStatus { Error = "读取超时" };
+                return new DeviceStatus
+                {
+                    Platform = platform,
+                    DeviceId = deviceId,
+                    Error = "读取超时",
+                };
             }
 
             var stdout = (await stdoutTask).Trim();
@@ -133,8 +206,10 @@ public sealed class StatusService
             {
                 return new DeviceStatus
                 {
+                    Platform = platform,
+                    DeviceId = deviceId,
                     Error = string.IsNullOrWhiteSpace(stderr)
-                        ? $"Python 退出码 {process.ExitCode}"
+                        ? $"{scriptName} 退出码 {process.ExitCode}"
                         : stderr,
                 };
             }
@@ -142,127 +217,51 @@ public sealed class StatusService
             var match = StatusPattern.Match(stdout);
             if (!match.Success)
             {
-                return new DeviceStatus { Error = "无法解析 Python 输出" };
+                return new DeviceStatus
+                {
+                    Platform = platform,
+                    DeviceId = deviceId,
+                    Error = "无法解析 Python 输出",
+                };
             }
 
-            var status = new DeviceStatus
+            var batteryLevel = ParseBattery(match.Groups[1].Value);
+            var deviceModel = Normalize(match.Groups[6].Value);
+            if (batteryLevel is null && deviceModel is null)
             {
-                BatteryLevel = ParseBattery(match.Groups[1].Value),
+                return new DeviceStatus
+                {
+                    Platform = platform,
+                    DeviceId = deviceId,
+                    Error = platform == "android"
+                        ? "未检测到 Android 设备"
+                        : "未检测到 iPhone",
+                };
+            }
+
+            return new DeviceStatus
+            {
+                Platform = platform,
+                DeviceId = deviceId,
+                BatteryLevel = batteryLevel,
                 IsCharging = ParseCharging(match.Groups[2].Value),
                 MediaTitle = Normalize(match.Groups[3].Value),
                 MediaArtist = Normalize(match.Groups[4].Value),
                 MediaState = Normalize(match.Groups[5].Value) ?? "unknown",
-                DeviceModel = Normalize(match.Groups[6].Value),
+                DeviceModel = deviceModel,
+                ForegroundApp = Normalize(match.Groups[7].Value),
+                ForegroundAppName = Normalize(match.Groups[8].Value),
             };
-
-            await WriteSnapshotAsync(status, workingDirectory, cancellationToken);
-            return status;
         }
         catch (Exception ex)
         {
-            return new DeviceStatus { Error = ex.Message };
+            return new DeviceStatus
+            {
+                Platform = platform,
+                DeviceId = deviceId,
+                Error = ex.Message,
+            };
         }
-    }
-
-    private async Task WriteSnapshotAsync(
-        DeviceStatus status,
-        string workingDirectory,
-        CancellationToken cancellationToken)
-    {
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var snapshot = new
-        {
-            schema = 1,
-            battery = new
-            {
-                level = status.BatteryLevel,
-                isCharging = status.IsCharging,
-                updatedAt = now,
-                error = (string?)null,
-            },
-            media = new
-            {
-                title = status.MediaTitle,
-                artist = status.MediaArtist,
-                album = (string?)null,
-                playbackState = status.MediaState,
-                durationSeconds = (double?)null,
-                elapsedSeconds = (double?)null,
-                playerName = (string?)null,
-                updatedAt = now,
-                error = (string?)null,
-            },
-            generatedAt = now,
-            errors = Array.Empty<string>(),
-            text = $"{status.BatteryDisplay} | {status.MediaDisplay}",
-        };
-
-        var runDirectory = Path.Combine(workingDirectory, "run");
-        Directory.CreateDirectory(runDirectory);
-        var path = Path.Combine(runDirectory, "status.json");
-        var tempPath = path + ".tmp-" + Environment.ProcessId;
-        var json = JsonSerializer.Serialize(snapshot, SnapshotJsonOptions);
-
-        await _writeLock.WaitAsync(cancellationToken);
-        try
-        {
-            await File.WriteAllTextAsync(tempPath, json, cancellationToken);
-            File.Move(tempPath, path, overwrite: true);
-        }
-        finally
-        {
-            _writeLock.Release();
-            try
-            {
-                if (File.Exists(tempPath))
-                {
-                    File.Delete(tempPath);
-                }
-            }
-            catch (IOException)
-            {
-            }
-        }
-    }
-
-    private static (string Python, string Script, string WorkingDirectory)? FindPaths()
-    {
-        var starts = new[]
-        {
-            Environment.GetEnvironmentVariable("STATUSCAST_ROOT"),
-            AppContext.BaseDirectory,
-            Environment.CurrentDirectory,
-        };
-
-        foreach (var start in starts)
-        {
-            if (string.IsNullOrWhiteSpace(start))
-            {
-                continue;
-            }
-
-            DirectoryInfo? directory;
-            try
-            {
-                directory = new DirectoryInfo(start);
-            }
-            catch (Exception)
-            {
-                continue;
-            }
-
-            for (var depth = 0; directory is not null && depth < 12; depth++, directory = directory.Parent)
-            {
-                var python = Path.Combine(directory.FullName, ".venv", "Scripts", "python.exe");
-                var script = Path.Combine(directory.FullName, "status_core.py");
-                if (File.Exists(python) && File.Exists(script))
-                {
-                    return (python, script, directory.FullName);
-                }
-            }
-        }
-
-        return null;
     }
 
     private static int? ParseBattery(string value)

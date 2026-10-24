@@ -84,3 +84,5 @@ secrets.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+plugins/*.dll

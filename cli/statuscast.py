@@ -25,7 +25,7 @@ if str(ROOT) not in sys.path:
 
 from status_core import BatterySource, MediaSource, Status  # noqa: E402
 
-VERSION = "0.2.0"
+VERSION = "2.0.0"
 
 MODEL_NAMES = {
     "iPhone10,3": "X",

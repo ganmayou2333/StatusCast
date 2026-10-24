@@ -14,7 +14,7 @@ public sealed partial class MainWindow : Window
 {
     public MainViewModel ViewModel { get; } = new();
 
-    private readonly StatusService _statusService = new();
+    private readonly StatusCoordinator _statusCoordinator = new();
     private readonly StatusServer _statusServer = new();
     private readonly DispatcherTimer _statusTimer;
     private Storyboard? _musicStoryboard;
@@ -112,11 +112,11 @@ public sealed partial class MainWindow : Window
         _refreshing = true;
         try
         {
-            var status = await _statusService.ReadAsync();
+            var snapshot = await _statusCoordinator.ReadAsync();
             DispatcherQueue.TryEnqueue(() =>
             {
-                ViewModel.Update(status);
-                UpdateMusicAnimation(status.MediaState == "playing");
+                ViewModel.Update(snapshot);
+                UpdateMusicAnimation(snapshot.Primary.MediaState == "playing");
             });
         }
         finally

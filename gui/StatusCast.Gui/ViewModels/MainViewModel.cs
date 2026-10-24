@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml.Media;
 using StatusCast_Gui.Services;
@@ -16,6 +17,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _mediaTitleDisplay = "暂无播放";
     private string _mediaArtistDisplay = "—";
     private string _stateDisplay = "正在读取状态…";
+    private string _androidModelDisplay = "Android 未连接";
+    private string _androidBatteryDisplay = "🔋 --";
+    private string _androidMediaDisplay = "🎵 --";
+    private string _androidAppDisplay = "—";
+    private string _androidStateDisplay = "未连接";
+    private string _pluginSummary = "无插件";
+    private bool _hasAndroid;
     private int? _batteryLevel;
     private double _batteryPercent;
 
@@ -55,6 +63,48 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _stateDisplay;
         private set => SetField(ref _stateDisplay, value);
+    }
+
+    public string AndroidModelDisplay
+    {
+        get => _androidModelDisplay;
+        private set => SetField(ref _androidModelDisplay, value);
+    }
+
+    public string AndroidBatteryDisplay
+    {
+        get => _androidBatteryDisplay;
+        private set => SetField(ref _androidBatteryDisplay, value);
+    }
+
+    public string AndroidMediaDisplay
+    {
+        get => _androidMediaDisplay;
+        private set => SetField(ref _androidMediaDisplay, value);
+    }
+
+    public string AndroidAppDisplay
+    {
+        get => _androidAppDisplay;
+        private set => SetField(ref _androidAppDisplay, value);
+    }
+
+    public string AndroidStateDisplay
+    {
+        get => _androidStateDisplay;
+        private set => SetField(ref _androidStateDisplay, value);
+    }
+
+    public string PluginSummary
+    {
+        get => _pluginSummary;
+        private set => SetField(ref _pluginSummary, value);
+    }
+
+    public bool HasAndroid
+    {
+        get => _hasAndroid;
+        private set => SetField(ref _hasAndroid, value);
     }
 
     public int? BatteryLevel
@@ -146,22 +196,39 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool BatteryArcIsLarge => BatteryPercent > 50;
 
-    public void Update(DeviceStatus status)
+    public void Update(StatusSnapshot snapshot)
     {
-        ModelDisplay = status.Error is null
-            ? status.ModelDisplay
-            : "设备未连接";
-        BatteryDisplay = status.BatteryDisplay;
-        MediaDisplay = status.MediaDisplay;
-        MediaTitleDisplay = string.IsNullOrWhiteSpace(status.MediaTitle)
+        var primary = snapshot.Primary;
+        ModelDisplay = primary.Error is null ? primary.DisplayName : "设备未连接";
+        BatteryDisplay = primary.BatteryDisplay;
+        MediaDisplay = primary.MediaDisplay;
+        MediaTitleDisplay = string.IsNullOrWhiteSpace(primary.MediaTitle)
             ? "暂无播放"
-            : status.MediaTitle;
-        MediaArtistDisplay = string.IsNullOrWhiteSpace(status.MediaArtist)
+            : primary.MediaTitle;
+        MediaArtistDisplay = string.IsNullOrWhiteSpace(primary.MediaArtist)
             ? "—"
-            : status.MediaArtist;
-        StateDisplay = status.Error ?? $"更新于 {DateTime.Now:HH:mm:ss}";
-        BatteryLevel = status.BatteryLevel;
-        BatteryPercent = Math.Clamp(status.BatteryLevel ?? 0, 0, 100);
+            : primary.MediaArtist;
+        StateDisplay = primary.Error ?? $"更新于 {DateTime.Now:HH:mm:ss}";
+        BatteryLevel = primary.BatteryLevel;
+        BatteryPercent = Math.Clamp(primary.BatteryLevel ?? 0, 0, 100);
+
+        var android = snapshot.Devices.FirstOrDefault(device => device.Platform == "android");
+        HasAndroid = android is not null
+            && (android.Error is null
+                || android.BatteryLevel is not null
+                || android.DeviceModel is not null);
+        AndroidModelDisplay = android?.DisplayName ?? "Android 未连接";
+        AndroidBatteryDisplay = android?.BatteryDisplay ?? "🔋 --";
+        AndroidMediaDisplay = android?.MediaDisplay ?? "🎵 --";
+        AndroidAppDisplay = android?.AppDisplay ?? "—";
+        AndroidStateDisplay = android?.Error ?? $"更新于 {DateTime.Now:HH:mm:ss}";
+
+        PluginSummary = snapshot.Plugins.Count == 0
+            ? "无插件"
+            : string.Join(
+                " · ",
+                snapshot.Plugins.Select(plugin =>
+                    plugin.Status is null ? plugin.Name : $"{plugin.Name}: {plugin.Status}"));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import asyncio
 import sys
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 from dataclasses import dataclass
 
 from pymobiledevice3.lockdown import create_using_usbmux

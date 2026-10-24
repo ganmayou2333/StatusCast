@@ -2,6 +2,28 @@
 
 All notable changes to StatusCast are documented here.
 
+## [2.0.0] - 2026-10-24
+
+### Added
+
+- Android collection via ADB (`status_core_android.py`): battery, model, foreground app and best-effort media session.
+- Parallel iPhone + Android collection with `Task.WhenAll` and a v2 snapshot containing a `devices` array.
+- `config.json` with `Aliases` and `EnabledPlugins`.
+- `StatusCast.Core` plugin contract (`IStatusPlugin`) and dynamic DLL loading from `plugins/`.
+- Sample `ClockPlugin`, plugin build script, and a plugin status chip in the WinUI header.
+- Android secondary device card in the WinUI dashboard.
+- Multi-device aliases such as `iPhone15,3 -> 主力机`.
+
+### Changed
+
+- Snapshot schema is now `2`; legacy `battery`, `media` and `text` fields remain for NekoTool clients.
+- `StatusService` only collects iPhone data; `StatusCoordinator` writes the combined snapshot.
+
+### Known issues
+
+- Realtek Bluetooth adapter cannot complete BLE pairing with the test iPhone; AMS returns `Insufficient Authentication`.
+- Android media metadata is best-effort and depends on the media app exposing a MediaSession.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added
@@ -20,5 +42,4 @@ All notable changes to StatusCast are documented here.
 
 ## [Unreleased]
 
-- Added: standalone CLI (`cli/statuscast.py`) with friendly text, JSON and watch mode.
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
