@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using StatusCast_Gui.Services;
 using StatusCast_Gui.ViewModels;
 using Windows.Graphics;
@@ -16,6 +17,7 @@ public sealed partial class MainWindow : Window
     private readonly StatusService _statusService = new();
     private readonly StatusServer _statusServer = new();
     private readonly DispatcherTimer _statusTimer;
+    private Storyboard? _musicStoryboard;
     private bool _refreshing;
 
     public MainWindow()
@@ -68,6 +70,36 @@ public sealed partial class MainWindow : Window
             running ? Microsoft.UI.Colors.LimeGreen : Microsoft.UI.Colors.IndianRed);
         ApiStatusText.Foreground = brush;
         ApiDot.Fill = brush;
+        ApiDotMain.Fill = brush;
+        ApiStatusMainText.Text = running ? "LIVE" : "OFFLINE";
+        ApiStatusMainText.Foreground = brush;
+    }
+
+    private void UpdateMusicAnimation(bool playing)
+    {
+        if (playing)
+        {
+            if (_musicStoryboard is null)
+            {
+                var animation = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 360,
+                    Duration = new Duration(TimeSpan.FromSeconds(14)),
+                    RepeatBehavior = RepeatBehavior.Forever,
+                };
+                Storyboard.SetTarget(animation, MusicIconRotate);
+                Storyboard.SetTargetProperty(animation, "Angle");
+                _musicStoryboard = new Storyboard();
+                _musicStoryboard.Children.Add(animation);
+            }
+
+            _musicStoryboard.Begin();
+            return;
+        }
+
+        _musicStoryboard?.Stop();
+        MusicIconRotate.Angle = 0;
     }
 
     private async Task RefreshStatusAsync()
@@ -81,7 +113,11 @@ public sealed partial class MainWindow : Window
         try
         {
             var status = await _statusService.ReadAsync();
-            DispatcherQueue.TryEnqueue(() => ViewModel.Update(status));
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                ViewModel.Update(status);
+                UpdateMusicAnimation(status.MediaState == "playing");
+            });
         }
         finally
         {

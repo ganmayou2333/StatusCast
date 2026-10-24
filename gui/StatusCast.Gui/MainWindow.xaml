@@ -12,6 +12,15 @@
     </Window.SystemBackdrop>
 
     <Grid>
+        <!-- Ambient gradient background -->
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#0B1020" Offset="0" />
+                <GradientStop Color="#111B2E" Offset="0.5" />
+                <GradientStop Color="#070B14" Offset="1" />
+            </LinearGradientBrush>
+        </Grid.Background>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -24,95 +33,331 @@
             </TitleBar.IconSource>
         </TitleBar>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
             <Grid
-                MaxWidth="980"
-                Padding="32,28"
-                VerticalAlignment="Center">
-                <Border
-                    Padding="32"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="20">
-                    <Grid ColumnSpacing="36">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
+                MaxWidth="1360"
+                Padding="40,22,40,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                        <!-- Battery arc: 180x180, center (90,90), radius 70, start at top -->
-                        <Grid Width="180" Height="180" HorizontalAlignment="Center">
-                            <Ellipse
-                                Width="140"
-                                Height="140"
-                                Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
-                                StrokeThickness="10" />
-                            <Path
-                                Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-                                StrokeThickness="10"
-                                StrokeStartLineCap="Round"
-                                StrokeEndLineCap="Round">
-                                <Path.Data>
-                                    <PathGeometry>
-                                        <PathFigure StartPoint="90,20" IsClosed="False">
-                                            <ArcSegment
-                                                Point="{x:Bind ViewModel.BatteryArcEndPoint, Mode=OneWay}"
-                                                Size="70,70"
-                                                SweepDirection="Clockwise"
-                                                IsLargeArc="{x:Bind ViewModel.BatteryArcIsLarge, Mode=OneWay}" />
-                                        </PathFigure>
-                                    </PathGeometry>
-                                </Path.Data>
-                            </Path>
-                            <StackPanel
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal"
-                                Spacing="2">
-                                <TextBlock
-                                    Text="{x:Bind ViewModel.BatteryLevelText, Mode=OneWay}"
-                                    FontSize="42"
-                                    FontWeight="SemiBold" />
-                                <TextBlock
-                                    Text="%"
-                                    FontSize="18"
-                                    Margin="0,0,0,7"
-                                    VerticalAlignment="Bottom"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </Grid>
+                <StackPanel Spacing="2">
+                    <TextBlock
+                        Text="StatusCast"
+                        FontSize="26"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        Text="iPhone · Windows bridge"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
 
-                        <StackPanel Grid.Column="1" Spacing="12" VerticalAlignment="Center">
-                            <TextBlock
-                                Text="{x:Bind ViewModel.ModelDisplay, Mode=OneWay}"
-                                FontSize="30"
-                                FontWeight="SemiBold" />
-                            <TextBlock
-                                Text="{x:Bind ViewModel.BatteryDisplay, Mode=OneWay}"
-                                FontSize="18" />
-                            <TextBlock
-                                Text="{x:Bind ViewModel.MediaDisplay, Mode=OneWay}"
-                                FontSize="18"
-                                TextWrapping="Wrap" />
-                            <TextBlock
-                                Text="{x:Bind ViewModel.StateDisplay, Mode=OneWay}"
-                                FontSize="12"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                <StackPanel
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    VerticalAlignment="Center">
+                    <Border
+                        Padding="10,4"
+                        Background="#1FFFFFFF"
+                        CornerRadius="12">
+                        <TextBlock
+                            Text="v0.2.0"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Border>
+                    <Border
+                        Padding="10,4"
+                        Background="#1822D3EE"
+                        CornerRadius="12">
+                        <TextBlock
+                            Text="LOCAL API"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="#7DD3FC" />
+                    </Border>
+                </StackPanel>
             </Grid>
-        </ScrollViewer>
 
-        <!-- Bottom status strip, bound to the same ViewModel -->
+            <!-- Main card -->
+            <ScrollViewer
+                Grid.Row="1"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled">
+                <Grid
+                    Width="1360"
+                    Padding="40,18,40,24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                    <Border
+                        Padding="44"
+                        BorderBrush="#33FFFFFF"
+                        BorderThickness="1"
+                        CornerRadius="30">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#E61A2233" Offset="0" />
+                                <GradientStop Color="#E6101624" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+
+                        <Grid ColumnSpacing="36">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="190" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Battery arc -->
+                            <StackPanel Spacing="10" VerticalAlignment="Center">
+                                <Grid
+                                    Width="260"
+                                    Height="260"
+                                    HorizontalAlignment="Center">
+                                    <Ellipse
+                                        Width="216"
+                                        Height="216"
+                                        Stroke="#1FFFFFFF"
+                                        StrokeThickness="12" />
+
+                                    <!-- Glow layer -->
+                                    <Path
+                                        Opacity="0.9"
+                                        Stroke="{x:Bind ViewModel.BatteryArcGlowBrush, Mode=OneWay}"
+                                        StrokeThickness="28"
+                                        StrokeStartLineCap="Round"
+                                        StrokeEndLineCap="Round">
+                                        <Path.Data>
+                                            <PathGeometry>
+                                                <PathFigure StartPoint="130,22" IsClosed="False">
+                                                    <ArcSegment
+                                                        Point="{x:Bind ViewModel.BatteryArcEndPoint, Mode=OneWay}"
+                                                        Size="108,108"
+                                                        SweepDirection="Clockwise"
+                                                        IsLargeArc="{x:Bind ViewModel.BatteryArcIsLarge, Mode=OneWay}" />
+                                                </PathFigure>
+                                            </PathGeometry>
+                                        </Path.Data>
+                                    </Path>
+
+                                    <!-- Main arc -->
+                                    <Path
+                                        Stroke="{x:Bind ViewModel.BatteryArcBrush, Mode=OneWay}"
+                                        StrokeThickness="12"
+                                        StrokeStartLineCap="Round"
+                                        StrokeEndLineCap="Round">
+                                        <Path.Data>
+                                            <PathGeometry>
+                                                <PathFigure StartPoint="130,22" IsClosed="False">
+                                                    <ArcSegment
+                                                        Point="{x:Bind ViewModel.BatteryArcEndPoint, Mode=OneWay}"
+                                                        Size="108,108"
+                                                        SweepDirection="Clockwise"
+                                                        IsLargeArc="{x:Bind ViewModel.BatteryArcIsLarge, Mode=OneWay}" />
+                                                </PathFigure>
+                                            </PathGeometry>
+                                        </Path.Data>
+                                    </Path>
+
+                                    <StackPanel
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="1">
+                                        <TextBlock
+                                            Text="{x:Bind ViewModel.BatteryLevelText, Mode=OneWay}"
+                                            FontSize="62"
+                                            FontWeight="SemiBold" />
+                                        <TextBlock
+                                            Text="%"
+                                            Margin="0,0,0,12"
+                                            VerticalAlignment="Bottom"
+                                            FontSize="20"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock
+                                    Text="BATTERY"
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    FontWeight="SemiBold"
+                                    CharacterSpacing="180"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+
+                            <!-- Details -->
+                            <StackPanel
+                                Grid.Column="1"
+                                Spacing="16"
+                                VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Border
+                                        Width="42"
+                                        Height="42"
+                                        VerticalAlignment="Center"
+                                        Background="#1F22D3EE"
+                                        CornerRadius="12">
+                                        <TextBlock
+                                            Text="📱"
+                                            FontSize="20"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock
+                                        Text="{x:Bind ViewModel.ModelDisplay, Mode=OneWay}"
+                                        FontSize="38"
+                                        FontWeight="SemiBold"
+                                        VerticalAlignment="Center"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.BatteryDisplay, Mode=OneWay}"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                                <Rectangle
+                                    Height="1"
+                                    Margin="0,4"
+                                    Fill="#22FFFFFF" />
+
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border
+                                        Width="56"
+                                        Height="56"
+                                        Background="#1F22D3EE"
+                                        CornerRadius="16">
+                                        <TextBlock
+                                            Text="🎵"
+                                            FontSize="26"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            RenderTransformOrigin="0.5,0.5">
+                                            <TextBlock.RenderTransform>
+                                                <RotateTransform x:Name="MusicIconRotate" CenterX="13" CenterY="13" />
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
+                                    </Border>
+
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        Spacing="2"
+                                        VerticalAlignment="Center">
+                                        <TextBlock
+                                            Text="{x:Bind ViewModel.MediaTitleDisplay, Mode=OneWay}"
+                                            FontSize="23"
+                                            FontWeight="SemiBold"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Text="{x:Bind ViewModel.MediaArtistDisplay, Mode=OneWay}"
+                                            FontSize="14"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                    <Border
+                                        Padding="11,5"
+                                        Background="#1FFFFFFF"
+                                        CornerRadius="12">
+                                        <TextBlock
+                                            Text="{x:Bind ViewModel.StateDisplay, Mode=OneWay}"
+                                            FontSize="11"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </Border>
+                                    <Border
+                                        Padding="11,5"
+                                        Background="#1822D3EE"
+                                        CornerRadius="12">
+                                        <TextBlock
+                                            Text="HTTP · 5099"
+                                            FontSize="11"
+                                            FontWeight="SemiBold"
+                                            Foreground="#7DD3FC" />
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Right-side live summary -->
+                            <Border
+                                Grid.Column="2"
+                                Padding="24,0,0,0"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1,0,0,0"
+                                VerticalAlignment="Center">
+                                <StackPanel Spacing="20">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock
+                                            Text="REFRESH"
+                                            FontSize="10"
+                                            FontWeight="SemiBold"
+                                            CharacterSpacing="140"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        <TextBlock Text="30s" FontSize="26" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock
+                                            Text="SOURCE"
+                                            FontSize="10"
+                                            FontWeight="SemiBold"
+                                            CharacterSpacing="140"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        <TextBlock Text="USB" FontSize="24" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock
+                                            Text="LOCAL API"
+                                            FontSize="10"
+                                            FontWeight="SemiBold"
+                                            CharacterSpacing="140"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Ellipse
+                                                x:Name="ApiDotMain"
+                                                Width="7"
+                                                Height="7"
+                                                Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                                            <TextBlock
+                                                x:Name="ApiStatusMainText"
+                                                Text="LIVE"
+                                                FontSize="14"
+                                                FontWeight="SemiBold"
+                                                Foreground="#7DD3FC" />
+                                        </StackPanel>
+                                        <TextBlock Text="PORT 5099" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Bottom status bar -->
         <Border
             Grid.Row="2"
-            Padding="16,8"
-            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            Padding="18,9"
+            Background="#B30B1020"
+            BorderBrush="#22FFFFFF"
             BorderThickness="0,1,0,0">
-            <Grid ColumnSpacing="18">
+            <Grid MaxWidth="1360" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -123,43 +368,50 @@
 
                 <TextBlock
                     Text="{x:Bind ViewModel.ModelDisplay, Mode=OneWay}"
-                    FontSize="13"
+                    FontSize="12"
                     FontWeight="SemiBold"
                     VerticalAlignment="Center" />
                 <TextBlock
                     Grid.Column="1"
                     Text="{x:Bind ViewModel.BatteryDisplay, Mode=OneWay}"
-                    FontSize="13"
+                    FontSize="12"
                     VerticalAlignment="Center" />
                 <TextBlock
                     Grid.Column="2"
                     Text="{x:Bind ViewModel.MediaDisplay, Mode=OneWay}"
-                    FontSize="13"
+                    FontSize="12"
                     TextTrimming="CharacterEllipsis"
                     VerticalAlignment="Center" />
-                <TextBlock
-                    Grid.Column="3"
-                    Text="{x:Bind ViewModel.StateDisplay, Mode=OneWay}"
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    VerticalAlignment="Center" />
 
-                <StackPanel
-                    Grid.Column="4"
-                    Orientation="Horizontal"
-                    Spacing="6"
-                    VerticalAlignment="Center">
-                    <Ellipse
-                        x:Name="ApiDot"
-                        Width="8"
-                        Height="8"
-                        Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                <Border
+                    Grid.Column="3"
+                    Padding="10,4"
+                    Background="#1FFFFFFF"
+                    CornerRadius="11">
                     <TextBlock
-                        x:Name="ApiStatusText"
-                        Text="API: 启动中"
-                        FontSize="12"
+                        Text="{x:Bind ViewModel.StateDisplay, Mode=OneWay}"
+                        FontSize="11"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
+                </Border>
+
+                <Border
+                    Grid.Column="4"
+                    Padding="10,4"
+                    Background="#1822D3EE"
+                    CornerRadius="11">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse
+                            x:Name="ApiDot"
+                            Width="7"
+                            Height="7"
+                            Fill="{ThemeResource TextFillColorTertiaryBrush}" />
+                        <TextBlock
+                            x:Name="ApiStatusText"
+                            Text="API: 启动中"
+                            FontSize="11"
+                            Foreground="#7DD3FC" />
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
     </Grid>

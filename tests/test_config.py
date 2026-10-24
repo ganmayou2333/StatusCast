@@ -39,7 +39,10 @@ class ConfigTests(unittest.TestCase):
             self.assertFalse(config.battery.enabled)
             self.assertEqual(config.media.source, "none")
             resolved = config.resolve_path(config.snapshot.path)
-            self.assertEqual(resolved, Path(temp) / "state" / "status.json")
+            self.assertEqual(
+                resolved.resolve(),
+                (Path(temp) / "state" / "status.json").resolve(),
+            )
 
     def test_rejects_unknown_media_source(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

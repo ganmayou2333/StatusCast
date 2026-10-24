@@ -44,6 +44,10 @@ StatusCast 是一个运行在 Windows 上的 iPhone 状态桥接工具。
 - 🛡️ **单一数据源**  
   WinUI 3 每 30 秒刷新一次，并原子写入 `run/status.json`；其他消费者读取快照或 API，不重复访问设备。
 
+![StatusCast UI](docs/screenshots/statuscast-main.png)
+
+> 截图使用演示数据；真实数据由 USB 连接的 iPhone 提供。
+
 ## 架构图
 
 ```mermaid
