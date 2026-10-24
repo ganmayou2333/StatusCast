@@ -3,15 +3,17 @@
 > 目标：Windows 作为 BLE Central，连接 iPhone（Peripheral），订阅 AMS 的
 > Entity Update 通知，拿到歌名/艺术家/播放状态。
 >
-> 本文记录方案、风险与本机实测；实际实现见 `core/sources/media_ams.py`，
-> 诊断入口是 `scripts/probe_ams.py`。所有协议字段来自 Apple 官方
-> Apple Media Service Reference；Windows 行为部分需要在目标机器上实测确认。
+> 本文记录方案、风险与本机实测；相关旧版 `core/`、`scripts/` 目录已在
+> v3.2 清理中移除，下文出现的 `core/sources/media_ams.py` 与
+> `scripts/probe_ams.py` 属于历史实现记录，可从 Git 历史中找回。
+> 所有协议字段来自 Apple 官方 Apple Media Service Reference；
+> Windows 行为部分需要在目标机器上实测确认。
 
 ## 0. 本机实测记录（2026-10-23）
 
 环境：Windows 11、Python 3.14.6、bleak 3.0.2、WinRT BLE。
 
-- `scripts/probe_ams.py` 能在扫描结果中找到一台 **iPhone15,3**，连接后
+- 历史诊断脚本 `scripts/probe_ams.py`（v3.2 清理中移除）能在扫描结果中找到一台 **iPhone15,3**，连接后
   `client.services` 中确实存在 AMS 服务，三个特征齐全。
 - 未配对时 `pair=False` 可以建立连接并枚举服务，但
   `start_notify(Entity Update)` 返回：
@@ -28,7 +30,7 @@
   或先在 Windows「设置 → 蓝牙和其他设备」中完成配对。若仍失败，AMS 在
   该 Windows 蓝牙栈上可能不可行，需要评估 AirPlay/MQTT 或 Linux BLE 桥接。
 
-复现命令：
+历史复现命令（脚本已从当前仓库移除，可从 Git 历史取回）：
 
 ```powershell
 .\.venv\Scripts\python.exe .\scripts\probe_ams.py --pair --debug-raw --listen 30

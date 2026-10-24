@@ -23,7 +23,7 @@ StatusCast 是 Windows 上的**底层设备数据层**。
 - 原子写入 `run/status.json`；
 - 通过 `http://localhost:5099/status/` 提供纯 JSON API。
 
-v3.1 已移除 WinUI 3 GUI，StatusCast 只保留一个轻量的控制台 daemon。所有界面、聚合、插件和展示都由 [NekoTool](https://github.com/ganmayou2333/NekoTool) 负责。
+v3.2 已移除 WinUI 3 GUI，StatusCast 只保留一个轻量的控制台 daemon。所有界面、聚合、插件和展示都由 [NekoTool](https://github.com/ganmayou2333/NekoTool) 负责。daemon 启动时还会在后台检查 GitHub Release，发现新版本时打印彩色 `[UPDATE]` 提示（不会自动下载覆盖）。
 
 ## 架构
 
@@ -56,7 +56,7 @@ StatusCast 不再包含：
 StatusCast/
 ├─ src/
 │  └─ StatusCast.Daemon/
-│     ├─ StatusCast.Daemon.csproj
+│     ├─ StatusCast.Daemon.csproj    # <Version>3.2.0</Version>
 │     ├─ Program.cs                  # 控制台入口、30 秒轮询、优雅退出
 │     └─ Services/
 │        ├─ ProjectLocator.cs
@@ -64,23 +64,17 @@ StatusCast/
 │        ├─ StatusCoordinator.cs     # Task.WhenAll + 快照
 │        ├─ StatusSnapshot.cs
 │        ├─ StatusCastConfig.cs
-│        └─ StatusServer.cs          # HttpListener :5099
+│        ├─ StatusServer.cs          # HttpListener :5099
+│        └─ UpdateChecker.cs         # GitHub Release 启动检查
 ├─ status_core.py                    # iPhone USB 采集
 ├─ status_core_android.py            # Android ADB 采集
 ├─ config.json                       # 自定义别名
-├─ cli/statuscast.py                 # 纯命令行客户端
-├─ scripts/
-│  ├─ run_daemon.ps1                 # 构建并运行 daemon
-│  ├─ build_cli.ps1
-│  └─ install_task.ps1
-├─ integrations/nekotrak/pull.ps1
-├─ core/                             # 旧版 Python daemon（保留）
-├─ adapters/
-├─ tests/
-├─ legacy/
 ├─ docs/
+│  └─ ble-ams-notes.md               # BLE/AMS 调研记录
 ├─ requirements.txt
-├─ pyproject.toml
+├─ .github/
+├─ CHANGELOG.md
+├─ README.md
 └─ run/                              # 运行时快照（不提交）
 ```
 
@@ -106,16 +100,16 @@ dotnet build .\src\StatusCast.Daemon\StatusCast.Daemon.csproj -c Debug
 dotnet run --project .\src\StatusCast.Daemon\StatusCast.Daemon.csproj -c Debug
 ```
 
-或使用脚本：
+构建完成后可直接运行：
 
 ```powershell
-.\scripts\run_daemon.ps1
+.\src\StatusCast.Daemon\bin\Debug\net10.0\StatusCast.Daemon.exe
 ```
 
 启动日志：
 
 ```text
-[SYSTEM] StatusCast Core v3.1 启动
+[SYSTEM] StatusCast Core v3.2.0 启动
 [SYSTEM] 纯后台采集引擎 · WinUI 已移除
 [API] 监听 http://localhost:5099/status/
 [USB] 等待 iPhone 连接...
@@ -125,7 +119,26 @@ dotnet run --project .\src\StatusCast.Daemon\StatusCast.Daemon.csproj -c Debug
 [SNAPSHOT] run/status.json 已更新 · 1792851926
 ```
 
+发现新版本时，后台还会追加（彩色）：
+
+```text
+[UPDATE] 发现新版本 v3.2.1！请前往 GitHub Release 下载最新 Daemon。
+[UPDATE] 更新内容：
+[UPDATE]   - 修复 Android 前台应用识别
+[UPDATE]   - ...
+```
+
 按 `Ctrl+C` 优雅退出。
+
+## 版本检查
+
+daemon 启动时非阻塞请求：
+
+```text
+https://api.github.com/repos/ganmayou2333/StatusCast/releases/latest
+```
+
+解析 `tag_name` 与当前程序集版本（`<Version>3.2.0</Version>`）比较，若远端更新则打印 `[UPDATE]` 提示，并从 `body` 中取前 3 行更新内容。检查失败或没有新版本时完全静默，不影响采集与 API。**不会自动下载或覆盖程序文件。**
 
 ## HTTP API
 
@@ -208,12 +221,6 @@ Start-Process `
   -WindowStyle Hidden
 ```
 
-或：
-
-```powershell
-.\scripts\run_daemon.ps1 -Hidden
-```
-
 ### 方式二：Windows 服务
 
 先发布单文件 exe：
@@ -239,7 +246,7 @@ netsh http add urlacl url=http://localhost:5099/ user=SYSTEM
 
 ### 方式三：启动文件夹 / 计划任务
 
-把 `scripts\run_daemon.ps1 -Hidden` 做成快捷方式放入 `shell:startup`，或使用任务计划程序在登录时启动。
+把发布后的 `StatusCast.Daemon.exe` 做成快捷方式放入 `shell:startup`，或使用任务计划程序在登录时启动。
 
 ## NekoTool 联动
 
@@ -255,7 +262,7 @@ ${(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "G:\StatusCast\NekoTo
 
 ```powershell
 cd G:\StatusCast\NekoTool
-.\setup.ps1
+.\scripts\setup.ps1
 ```
 
 ## 相关仓库

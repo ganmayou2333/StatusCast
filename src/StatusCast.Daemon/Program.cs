@@ -22,8 +22,11 @@ internal static class Program
 
         Console.Title = "StatusCast Core";
 
-        Log("SYSTEM", "StatusCast Core v3.1 启动", ConsoleColor.Cyan);
+        Log("SYSTEM", "StatusCast Core v3.2.0 启动", ConsoleColor.Cyan);
         Log("SYSTEM", "纯后台采集引擎 · WinUI 已移除", ConsoleColor.DarkGray);
+
+        // Fire-and-forget: the GitHub Release check must never block startup.
+        _ = UpdateChecker.CheckForUpdatesAsync();
 
         var coordinator = new StatusCoordinator();
         using var server = new StatusServer();

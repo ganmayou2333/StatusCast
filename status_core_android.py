@@ -128,23 +128,59 @@ def get_battery(adb: str, serial: str | None) -> tuple[int | None, bool | None]:
     return level, charging
 
 
+# Foreground-app fields exposed by `dumpsys`.  The activity manager fields are
+# preferred because they describe the activity the user actually resumed; the
+# window manager's mCurrentFocus is used as a fallback for OEM builds that omit
+# or rename the activity fields.
+_ACTIVITY_FOREGROUND_RE = re.compile(
+    r"(?:topResumedActivity|mResumedActivity)\s*[=:]\s*[^\n]*?"
+    r"\b([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+)/"
+)
+_WINDOW_FOREGROUND_RE = re.compile(
+    r"mCurrentFocus\s*=\s*[^\n]*?"
+    r"\b([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+)/"
+)
+
+# `mCurrentFocus` can briefly point at the notification shade or a system
+# dialog; those are not user apps and should not become the foreground app.
+_SYSTEM_FOREGROUND_PACKAGES = {"android", "com.android.systemui"}
+
+
+def _match_foreground_package(
+    output: str | None, pattern: re.Pattern[str]
+) -> str | None:
+    if not output:
+        return None
+    match = pattern.search(output)
+    if not match:
+        return None
+    package = match.group(1)
+    if package in _SYSTEM_FOREGROUND_PACKAGES:
+        return None
+    return package
+
+
 def get_foreground_app(adb: str, serial: str | None) -> str | None:
+    """Return the foreground package by cross-checking two dumpsys views.
+
+    1. ``dumpsys activity activities`` -> ``topResumedActivity`` /
+       ``mResumedActivity`` (activity-level, most precise).
+    2. ``dumpsys window displays`` -> ``mCurrentFocus`` (window-level fallback,
+       also covers builds where the activity dump is unavailable).
+    """
     try:
         output = run_adb(adb, serial, ["shell", "dumpsys", "activity", "activities"])
-        match = re.search(
-            r"(?:mResumedActivity|topResumedActivity).*?\s([A-Za-z0-9_.]+)/",
-            output,
-        )
-        if match:
-            return match.group(1)
+        package = _match_foreground_package(output, _ACTIVITY_FOREGROUND_RE)
+        if package:
+            return package
     except Exception:
         pass
 
     try:
-        output = run_adb(adb, serial, ["shell", "dumpsys", "window", "windows"])
-        match = re.search(r"mCurrentFocus=.*?\s([A-Za-z0-9_.]+)/", output)
-        if match:
-            return match.group(1)
+        output = run_adb(adb, serial, ["shell", "dumpsys", "window", "displays"])
+        package = _match_foreground_package(output, _WINDOW_FOREGROUND_RE)
+        if package:
+            return package
     except Exception:
         pass
 
