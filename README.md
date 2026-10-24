@@ -212,6 +212,14 @@ Invoke-RestMethod http://localhost:5099/status/ | ConvertTo-Json -Depth 4
 - 没有检测到设备时退出码为 `1`，输出仍会保留友好提示；
 - `--watch` 模式会持续运行，按 `Ctrl+C` 停止。
 
+打包单文件 exe：
+
+```powershell
+.\scripts\build_cli.ps1
+```
+
+输出位于 `dist\statuscast-cli.exe`，可直接分发，不需要目标机器安装 Python。
+
 ## NekoTrak 接入
 
 在 NekoTrak 的自定义文本框中填写：
