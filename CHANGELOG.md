@@ -20,4 +20,5 @@ All notable changes to StatusCast are documented here.
 
 ## [Unreleased]
 
+- Added: standalone CLI (`cli/statuscast.py`) with friendly text, JSON and watch mode.
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.

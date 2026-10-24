@@ -180,6 +180,38 @@ Invoke-RestMethod http://localhost:5099/status/ | ConvertTo-Json -Depth 4
 - 未知路径返回 `404`；
 - 端口被占用时应用不会崩溃，底部指示器会显示 `API: 未启动`。
 
+## 纯命令行版本
+
+不启动 WinUI 也可以直接在终端读取状态：
+
+```powershell
+.\.venv\Scripts\python.exe cli\statuscast.py
+```
+
+输出：
+
+```text
+📱 14 Pro Max | 🔋 87% ⚡ | 🎵 暂无播放
+```
+
+输出与 HTTP API 相同结构的 JSON：
+
+```powershell
+.\.venv\Scripts\python.exe cli\statuscast.py --json
+```
+
+每 30 秒刷新一次：
+
+```powershell
+.\.venv\Scripts\python.exe cli\statuscast.py --watch 30
+```
+
+说明：
+
+- 仅依赖 Python + USB，不需要 WinUI 或 HTTP 服务；
+- 没有检测到设备时退出码为 `1`，输出仍会保留友好提示；
+- `--watch` 模式会持续运行，按 `Ctrl+C` 停止。
+
 ## NekoTrak 接入
 
 在 NekoTrak 的自定义文本框中填写：
@@ -207,6 +239,7 @@ ${(Invoke-RestMethod -Uri 'http://localhost:5099/status/' -UseBasicParsing).text
 ```text
 StatusCast/
 ├─ status_core.py                 # Python USB 电量/机型采集
+├─ cli/statuscast.py              # 纯命令行版本
 ├─ config.toml
 ├─ requirements.txt
 ├─ pyproject.toml
@@ -235,7 +268,8 @@ StatusCast/
 ├─ legacy/
 │  └─ get_status.ps1
 ├─ docs/
-│  └─ ble-ams-notes.md
+│  ├─ ble-ams-notes.md
+│  └─ screenshots/                # README 截图
 ├─ .github/workflows/dotnet.yml
 └─ run/                           # 运行时快照（不提交）
 ```
@@ -245,6 +279,7 @@ StatusCast/
 ### 已完成
 
 - [x] USB 读取 iPhone 电量、充电状态与机型
+- [x] 纯命令行输出（文本 / JSON / watch 模式）
 - [x] PowerShell 捕获 Python 输出
 - [x] WinUI 3 展示 + MVVM + Mica + 动态电量圆环
 - [x] 单一数据源写入 `run/status.json`
