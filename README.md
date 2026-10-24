@@ -8,6 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://www.python.org/)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![API](https://img.shields.io/badge/API-localhost%3A5099-22C55E)](http://localhost:5099/status/)
+[![Release](https://img.shields.io/github/v/release/ganmayou2333/StatusCast?display_name=tag&sort=semver)](https://github.com/ganmayou2333/StatusCast/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -278,9 +279,19 @@ StatusCast/
 
 端口 `5099` 可能被占用。关闭占用端口的程序后重启 WinUI；应用会捕获异常并显示 `API: 未启动`，不会要求管理员权限。
 
+## 版本与发布
+
+- 当前版本：`v0.2.0`
+- 发布页：[GitHub Releases](https://github.com/ganmayou2333/StatusCast/releases)
+- 变更记录：[CHANGELOG.md](CHANGELOG.md)
+
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request。建议先创建 Issue 描述使用场景或问题，再提交改动。
+欢迎提交 Issue 和 Pull Request。建议先创建 Issue 描述使用场景或问题，再提交改动。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 安全
+
+安全问题请使用 GitHub 私有安全报告，不要直接开公开 Issue。详见 [SECURITY.md](SECURITY.md)。
 
 ## License
 
