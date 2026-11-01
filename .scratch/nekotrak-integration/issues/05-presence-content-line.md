@@ -33,7 +33,7 @@
 
 - 🎮 只认 `nekotrak.currentGame`。**我曾让它在前台不是游戏时退回 `foregroundAppName`，结果 presence 显示成 `chrome.exe`** —— 与票面「无游戏显示挂台中」冲突，已移除该回退。
 - 🔋 只认手机：`ios 且有电量` → `android 且有电量` → 任一手机。MacBook / 主机 / BLE 不抢这一格。daemon 在机型未知时会把 `displayName` 填成占位符「未知机型」，已过滤，否则会出现 `🔋 未知机型 未知`。
-- 🍅 只在快照带 `nekotrak.pomodoro.remainingSeconds` 时出现（06 落地后自动生效），现在整段省略、不留占位。
+- 🍅 **不会出现**：06 已按用户决定关闭（不可行 / 不做），`write_to_obs.ps1` 里的 🍅 分支已删除，presence 固定两段。
 
 真机跑一轮（daemon 在跑、手机未连）：`🎮 挂台中 · 🔋 未知`，耗时 388ms（含 PowerShell 启动）。
 

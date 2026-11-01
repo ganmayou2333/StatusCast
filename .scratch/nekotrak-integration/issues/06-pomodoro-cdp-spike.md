@@ -12,12 +12,12 @@
 
 **Blocked by:** 05
 
-**Status:** blocked — CDP ruled out on this build; UIA probe needs one running pomodoro
+**Status:** closed — 不做（用户 2026-11-01 决定），探针已删除，回落纯 L1
 
-- [ ] 二选一成立：🍅 上屏，或在计划文档留下明确不可行结论（写明卡在哪一步）
-- [ ] 失败时探测代码已删除，无残留开关或死代码
+- [x] 二选一成立：🍅 上屏，或在计划文档留下明确不可行结论（写明卡在哪一步）
+- [x] 失败时探测代码已删除，无残留开关或死代码
 - [x] 调试端口相关配置未进入仓内任何文件
-- [ ] 失败时探测代码已删除，无残留开关或死代码
+- [x] 失败时探测代码已删除，无残留开关或死代码
 
 ## Comments
 
@@ -77,3 +77,21 @@ python G:\StatusCast\NekoTool\scripts\probe_nekotrak_cdp.py
 新增 `scripts/probe_nekotrak_uia.ps1`：只读，报告窗口数、元素数、以及所有形如 `mm:ss` 的文本。当前空闲状态下**没有倒计时文本**（界面上只有「开始/停止」按钮），所以还需要一次「番茄钟正在跑」的观测才能定论。
 
 **下一步**：在 NekoTrak 里点一次「开始」（25 分钟那个），然后重跑 `scripts/probe_nekotrak_uia.ps1`。出现 `countdown: 24:59` 这类文本 → UIA 可用，接着把读取接进采集器；仍然没有 → UIA 也看不到（定时器可能是画布绘制），按票面失败分支收尾。
+
+## 收尾结论（2026-11-01）
+
+用户选择 **B：不做**。已执行：
+
+- 删除 `scripts/probe_nekotrak_cdp.py` 与 `scripts/probe_nekotrak_uia.ps1`
+- 删除 `write_to_obs.ps1` 里的 🍅 分支（既然没有任何产出的来源，留着就是死代码）；presence 行固定两段
+- README 的 🍅 行改为「未实现」并写明原因
+- CHANGELOG 里那条探针记录删除
+- 计划文档 T5 改标「关闭：不做，也不可行」，并记录两条路各自卡在哪
+
+**为什么不可行（证据）**：
+
+1. **明文没有**：`%APPDATA%\NekoTrak` 下所有 `.db` 无 SQLite 魔数，`tracker-heartbeat.json` 是 `NKSC` 密文。
+2. **CDP 被 Tauri 挡死**：带调试端口重启后无 9222 监听、所有 `msedgewebview2.exe` 命令行都不含 `--remote-debugging-port`、`EBWebView` 下无 `DevToolsActivePort`。应用自带 FixedVersionRuntime 151.0.4129.107，Tauri 自己设置了 additionalBrowserArgs，环境变量被忽略。
+3. **UIA 可用但被放弃**：能读到界面文本（番茄钟/开始/停止/总专注时长等 90+ 元素），但读倒计时要求番茄钟正在运行、每轮多 1–2 秒，用户认为不值得为此读别的应用界面。
+
+**结果**：`nekotrak.pomodoro` 永远为 `null`，presence 固定 `🎮 <游戏/挂台中> · 🔋 <名称> <电量>%[⚡]`。
