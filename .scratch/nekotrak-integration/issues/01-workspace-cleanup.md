@@ -8,7 +8,7 @@
 
 **Blocked by:** None（可立即开始）
 
-**Status:** ready-for-agent
+**Status:** done（2026-11-01，见 Comments）
 
 - [x] 逐条审完 StatusCast 的 modified / untracked 与 NekoTool 的 modified，产出「文件 → 分组 → 是否用户实验」清单交用户确认
 - [x] 用户确认后按组提交，提交信息沿用仓库风格
