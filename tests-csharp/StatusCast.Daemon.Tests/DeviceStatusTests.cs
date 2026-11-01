@@ -17,6 +17,7 @@ public sealed class DeviceStatusTests
             Node = new NodeStatus { Ssh = false },
             Ble = new BleStatus { Connected = false },
             Transport = new TransportStatus { Active = "arp" },
+            NekoTrak = new NekoTrakStatus { UptimeSec = 60 },
         };
 
         var aliased = device.WithAlias("客厅");
@@ -27,6 +28,7 @@ public sealed class DeviceStatusTests
         Assert.Same(device.Node, aliased.Node);
         Assert.Same(device.Ble, aliased.Ble);
         Assert.Same(device.Transport, aliased.Transport);
+        Assert.Same(device.NekoTrak, aliased.NekoTrak);
     }
 
     [Theory]
@@ -36,6 +38,7 @@ public sealed class DeviceStatusTests
     [InlineData("steam", "🎮")]
     [InlineData("macos", "💻")]
     [InlineData("linux", "🐧")]
+    [InlineData("windows", "🖥")]
     [InlineData("ble", "📱")]
     public void PlatformIconMappingIsStable(string platform, string icon)
     {
@@ -48,6 +51,8 @@ public sealed class DeviceStatusTests
     {
         Assert.Equal("PS5", new DeviceStatus { DeviceModel = "PS5" }.ModelDisplay);
         Assert.Equal("14 Pro Max", new DeviceStatus { DeviceModel = "iPhone15,3" }.ModelDisplay);
+        // NekoTrak already reports a display-ready model; it must not be mapped.
+        Assert.Equal("NekoTrak 1.1.13", new DeviceStatus { DeviceModel = "NekoTrak 1.1.13" }.ModelDisplay);
         Assert.Equal("未知机型", new DeviceStatus().ModelDisplay);
     }
 

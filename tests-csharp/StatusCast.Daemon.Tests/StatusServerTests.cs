@@ -30,8 +30,7 @@ public sealed class StatusServerTests
     /// End-to-end socket check. Skipped by default because some sandboxed
     /// shells deny HTTP.sys request-queue creation to non build-output binaries
     /// (`HttpListenerException: 句柄无效`), which would make the suite
-    /// environment-dependent. Run manually with STATUSCAST_NETWORK_TESTS=1
-    /// (verified against the real daemon: GET /health → 200 with snapshotReady).
+    /// environment-dependent. Run manually with STATUSCAST_NETWORK_TESTS=1.
     /// </summary>
     [Fact]
     public async Task HealthAndStatusOverLoopback()
@@ -58,19 +57,34 @@ public sealed class StatusServerTests
                 BaseAddress = new Uri($"http://localhost:{port}/"),
                 Timeout = TimeSpan.FromSeconds(10),
             };
+            // The server registers a prefix per loopback spelling, so both must
+            // answer. Probes in the wild hardcode either one.
+            using var loopback = new HttpClient
+            {
+                BaseAddress = new Uri($"http://127.0.0.1:{port}/"),
+                Timeout = TimeSpan.FromSeconds(10),
+            };
 
-            var health = await client.GetAsync("health");
-            Assert.Equal(HttpStatusCode.OK, health.StatusCode);
-            Assert.Contains("\"snapshotReady\":false", await health.Content.ReadAsStringAsync());
+            var notReady = await client.GetAsync("health");
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, notReady.StatusCode);
+            Assert.Contains("\"ok\":false", await notReady.Content.ReadAsStringAsync());
 
             Directory.CreateDirectory(Path.Combine(root, "run"));
             await File.WriteAllTextAsync(
                 Path.Combine(root, "run", "status.json"),
-                "{\"schema\":3,\"devices\":[]}");
+                "{\"schema\":3,\"generatedAt\":1793458293,\"devices\":[]}");
 
-            Assert.Contains("\"snapshotReady\":true", await client.GetStringAsync("health"));
+            var ready = await client.GetAsync("health");
+            Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+            var body = await ready.Content.ReadAsStringAsync();
+            Assert.Contains("\"ok\":true", body);
+            Assert.Contains("\"deviceCount\":0", body);
+            Assert.Contains("\"generatedAt\":1793458293", body);
+            Assert.Contains("\"schema\":3", body);
+
+            Assert.Equal(HttpStatusCode.OK, (await loopback.GetAsync("health")).StatusCode);
             Assert.Equal(
-                "{\"schema\":3,\"devices\":[]}",
+                "{\"schema\":3,\"generatedAt\":1793458293,\"devices\":[]}",
                 await client.GetStringAsync("status/"));
 
             Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("nope")).StatusCode);

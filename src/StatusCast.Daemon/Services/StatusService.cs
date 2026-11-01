@@ -122,12 +122,19 @@ public sealed class DeviceStatus
     public BleStatus? Ble { get; init; }
     public NekoTrakStatus? NekoTrak { get; init; }
 
-    public string ModelDisplay => DeviceModel switch
+    // Friendly names for Apple hardware identifiers. Everything else (consoles,
+    // nodes, BLE peripherals, NekoTrak) already reports a human-readable model
+    // and is passed through untouched.
+    private static readonly Dictionary<string, string> DeviceModelAliases = new()
     {
-        "iPhone15,3" => "14 Pro Max",
-        "iPhone14,3" => "13 Pro Max",
-        _ => DeviceModel ?? "未知机型",
+        ["iPhone15,3"] = "14 Pro Max",
+        ["iPhone14,3"] = "13 Pro Max",
     };
+
+    public string ModelDisplay =>
+        DeviceModel is not null && DeviceModelAliases.TryGetValue(DeviceModel, out var alias)
+            ? alias
+            : DeviceModel ?? "未知机型";
 
     public string DisplayName =>
         string.IsNullOrWhiteSpace(Alias) ? ModelDisplay : Alias;
@@ -138,6 +145,7 @@ public sealed class DeviceStatus
         "console" or "steam" => "🎮",
         "macos" => "💻",
         "linux" => "🐧",
+        "windows" => "🖥",
         _ => "📱",
     };
 

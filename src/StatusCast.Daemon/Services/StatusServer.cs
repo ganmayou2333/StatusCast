@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -39,9 +41,27 @@ public sealed class StatusServer : IDisposable
             }
 
             var listener = new HttpListener();
-            // One prefix for the whole loopback origin: both /status/ and the
-            // /health probe are routed in HandleRequestAsync.
-            listener.Prefixes.Add($"http://localhost:{_port}/");
+            // One prefix per loopback spelling: `localhost` is what the docs and
+            // every script use, `127.0.0.1` is what tools and probes tend to
+            // hardcode. A prefix can be rejected on its own (reserved URL ACL,
+            // odd hosts file), so each is added independently and losing one
+            // must not take the server down with it.
+            foreach (var prefix in new[]
+                     {
+                         $"http://localhost:{_port}/",
+                         $"http://127.0.0.1:{_port}/",
+                     })
+            {
+                try
+                {
+                    listener.Prefixes.Add(prefix);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[StatusServer] prefix rejected '{prefix}': {ex.Message}");
+                }
+            }
+
             try
             {
                 listener.Start();
@@ -194,14 +214,7 @@ public sealed class StatusServer : IDisposable
                     return;
 
                 case RouteKind.Health:
-                    var snapshotReady = File.Exists(_snapshotPath);
-                    await WriteJsonAsync(
-                        response,
-                        200,
-                        snapshotReady
-                            ? "{\"status\":\"ok\",\"snapshotReady\":true}"
-                            : "{\"status\":\"ok\",\"snapshotReady\":false}",
-                        cancellationToken);
+                    await WriteHealthAsync(response, cancellationToken);
                     return;
 
                 case RouteKind.NotFound:
@@ -246,6 +259,64 @@ public sealed class StatusServer : IDisposable
             {
             }
         }
+    }
+
+    /// <summary>
+    /// Liveness plus a cheap summary of the snapshot behind <c>/status/</c>.
+    /// 200 means "serving and a snapshot could be read"; 503 means "process is
+    /// up but no usable snapshot yet", which a supervisor should retry on
+    /// rather than treat as a crash.
+    /// </summary>
+    private async Task WriteHealthAsync(
+        HttpListenerResponse response,
+        CancellationToken cancellationToken)
+    {
+        int? deviceCount = null;
+        long? generatedAt = null;
+        int? schema = null;
+        try
+        {
+            var json = await File.ReadAllTextAsync(_snapshotPath, cancellationToken);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                if (root.TryGetProperty("schema", out var schemaElement)
+                    && schemaElement.TryGetInt32(out var parsedSchema))
+                {
+                    schema = parsedSchema;
+                }
+
+                if (root.TryGetProperty("generatedAt", out var generatedElement)
+                    && generatedElement.TryGetInt64(out var parsedGeneratedAt))
+                {
+                    generatedAt = parsedGeneratedAt;
+                }
+
+                if (root.TryGetProperty("devices", out var devicesElement)
+                    && devicesElement.ValueKind == JsonValueKind.Array)
+                {
+                    deviceCount = devicesElement.GetArrayLength();
+                }
+            }
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // Missing, unreadable or half-written snapshot: report "not ready"
+            // with nulls instead of guessing at counts.
+            Debug.WriteLine($"[StatusServer] health snapshot unreadable: {ex.Message}");
+        }
+
+        var ready = deviceCount is not null;
+        var body = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["ok"] = ready,
+            ["deviceCount"] = deviceCount,
+            ["generatedAt"] = generatedAt,
+            ["schema"] = schema,
+        });
+        await WriteJsonAsync(response, ready ? 200 : 503, body, cancellationToken);
     }
 
     private static async Task WriteJsonAsync(
