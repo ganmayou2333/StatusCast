@@ -24,7 +24,7 @@
 - [ ] 切换前台游戏后 `foregroundAppName` 在 ≤60s 内正确（Steam 索引缓存 10 分钟不影响正确性）
 - [ ] 杀掉 NekoTrak 后该条目 ≤30s 转 error，同轮 iPhone / Android 条目仍正常更新
 - [x] 缺文件、日志格式漂移 → 对应字段 null + `warns`，无未捕获异常
-- [ ] 实测确认 `ultimate_status.ps1` 与 widget 对新增字段宽容（不宽容则先修消费侧，再继续）
+- [x] 实测确认 `ultimate_status.ps1` 与 widget 对新增字段宽容（不宽容则先修消费侧，再继续）
 - [x] 离线 unittest 全绿，fixtures 锁当前 NekoTrak 格式，不需要真机或真 Steam 库
 
 ## Comments
@@ -40,7 +40,7 @@
 
 1. 「切游戏后 `foregroundAppName` 正确」——当时前台没有 Steam 游戏，无法验证映射；日志路径与 `installdir` 匹配已有单测覆盖。
 2. 「杀掉 NekoTrak 转 error」——只能靠用户自己关掉应用验证；`CollectorError` → 标准 error 条目的语义已有单测（`test_failure_becomes_the_standard_error_entry`），真实进程消失未测。
-3. 「消费侧宽容性」——`ultimate_status.ps1`/widget 用 `Invoke-RestMethod`/`JSON.parse` 天然忽略未知键，但未做实测；display-polish 01/02 会正面消费这个对象。
+3. ~~「消费侧宽容性」~~ —— **已由 display-polish 04 反向证明**：widget 现在正面渲染 `nekotrak` 对象（TRACKER / 运行时长 / 当前游戏 / 宠物 / warns），并用合成 payload 做了 12 项 DOM 断言；dashboard 同样渲染。两条链路都吃下了这个对象，不存在"多一个键就崩"的问题。
 
 实现要点与偏差：
 
