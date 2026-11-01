@@ -40,3 +40,5 @@
 **未验证**：最后一条（日志零 `custom_text_command_failed`）需要用户重启 NekoTrak。从结构上说不会回归——NekoTrak 读的仍是同一个文件，读路径耗时没变（187–194ms）。
 
 后台写入器已用新代码重启（默认 presence 风格）。
+
+**2026-11-01 11:34 — 追加**：真实 daemon 下跑一轮 presence（`write_to_obs.ps1 -Once`）耗时 **0.1 秒**，输出 `🎮 挂台中 · 🔋 未知`（当时没连手机、前台不是 Steam 游戏，两段都落在预期分支）。
