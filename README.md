@@ -236,7 +236,17 @@ adb connect 192.168.1.21:5555
 - 依赖：`requirements.txt` 已声明 `bleak==3.0.2`（Windows 下它会带上 `winrt-Windows.Devices.Bluetooth*`）。缺依赖只影响 BLE 条目，不拖垮其它设备。
 - 性能：配置 ≤2 个 BLE 设备时单轮 < 15 秒；更多设备会串行叠加。
 - 隐私：BLE 地址与广播名只存在本机 `config.json`，不联网、不配对、不向设备写入任何数据。
-- BLE 结果只进 JSON；PS1 / OBS 行本轮不变（展示留 C3）。
+- BLE 结果只进 JSON；展示在 NekoTool 侧（见其 README）。
+
+## NekoTrak 桌面应用（可选）
+
+本机装了 NekoTrak 时，它作为一台独立设备出现在 `devices` 里（`platform: "windows"`，`id: "nekotrak"`），前端不用改就能看到。
+
+- 数据源：`%APPDATA%\NekoTrak` 的明文产物——`startup.log`（版本/启动时长）、`NekoTrak.log`（TRACKER 状态与 `custom_text_command_failed` 计数）、`users/<steamid>/pet-tales.txt`（宠物近况）；当前游戏由「前台进程 × Steam 库索引」解析。
+- **没有明文番茄钟会话**：所有数据库是加密的（无 SQLite 头），`tracker-heartbeat.json` 是 `NKSC` 密文。所以 `pomodoro` 恒为 `null`，除非 CDP 预案落地（见 `.scratch/nekotrak-integration/issues/06-pomodoro-cdp-spike.md`）。
+- 存活判定双保险：heartbeat 文件 60 秒内被改写 **或** 进程表里有 `NekoTrak.exe`。未运行时该条目变成标准 `error` 条目，不影响其它设备。
+- 从没跑过 NekoTrak 的机器**不会**产生这一条——数据根不存在就不注册采集器，避免挂一条永远红的 `NekoTrak 未运行`。
+- 附加对象 `nekotrak` 的字段集合写在 `schema/status-contract.json` 里（`additiveFields.nekotrak`），Python 与 C# 两侧一起校验。
 
 ## 环境要求
 
@@ -321,6 +331,16 @@ https://api.github.com/repos/ganmayou2333/StatusCast/releases/latest
 解析 `tag_name` 与当前程序集版本（`<Version>3.3.0</Version>`）比较，若远端更新则打印 `[UPDATE]` 提示，并从 `body` 中取前 3 行更新内容。检查失败或没有新版本时完全静默，不影响采集与 API。**不会自动下载或覆盖程序文件。**
 
 ## HTTP API
+
+`/status/` 返回快照；`/health` 是给守护脚本用的轻量自检（不返回设备列表）：
+
+```powershell
+curl.exe http://localhost:5099/health
+# {"ok":true,"deviceCount":4,"generatedAt":1793502540,"schema":3}
+```
+
+- `localhost` 与 `127.0.0.1` 两种写法都注册了前缀，各自独立；某一条被 URL ACL 拒绝不会拖垮服务器。
+- 快照还没写出来、或写到一半读不出来时返回 **503** 并带 `ok:false`，守护脚本应当重试而不是当成崩溃。
 
 ```powershell
 Invoke-RestMethod -Uri 'http://localhost:5099/status/' -UseBasicParsing

@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `collectors/nekotrak_collector.py`: NekoTrak on this PC becomes a device of
+  its own (`platform: "windows"`, `id: "nekotrak"`) with an additive
+  `nekotrak` object — version, uptime, TRACKER state, pet, current game and
+  `warns`. Liveness is a double check (heartbeat file rewritten within 60 s or
+  a live `NekoTrak.exe`); anything unreadable degrades one field plus a
+  warning, and only "not running" becomes the standard error entry. The
+  collector is registered only when the NekoTrak data root exists, so a
+  machine that never ran it keeps byte-identical output.
+- `schema/status-contract.json`: new `nekotrak` additive object with its field
+  list, asserted on both the Python and the C# side. The daemon decodes and
+  passes it through (`NekoTrakStatus`), keeps it in `WithAlias` /
+  `ToStaleDevice` clones, and renders `platform: "windows"` with 🖥.
+- `GET /health` now answers `{ok, deviceCount, generatedAt, schema}` read from
+  the snapshot, with **503** while no usable snapshot exists, and both
+  `localhost` and `127.0.0.1` prefixes are registered independently.
+
 - `collectors/iphone_wireless_test.py`: independent iPhone Wi-Fi discovery probe
   (usbmuxd `Network` first, Bonjour/mobdev2 fallback). It is deliberately not
   imported by `status_core.py` and is not a registered collector.
