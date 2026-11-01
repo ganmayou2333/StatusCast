@@ -1,7 +1,10 @@
 {
+  "RefreshIntervalSeconds": 30,
   "Aliases": {
     "iPhone15,3": "主力机",
     "iPhone14,3": "13 Pro Max",
     "Pixel 7": "备用机"
-  }
+  },
+  "Consoles": [],
+  "SshNodes": []
 }

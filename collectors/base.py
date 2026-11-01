@@ -44,16 +44,41 @@ class BaseCollector(ABC):
 
     def error_payload(self, message: str) -> dict[str, Any]:
         """Build the standard device entry used when collection fails."""
-        return {
-            "id": self.device_id,
-            "platform": self.platform,
-            "model": None,
-            "batteryLevel": None,
-            "isCharging": None,
-            "mediaTitle": None,
-            "mediaArtist": None,
-            "mediaState": "unknown",
-            "foregroundApp": None,
-            "foregroundAppName": None,
-            "error": message or "采集失败",
-        }
+        return error_entry(self.platform, self.device_id, message or "采集失败")
+
+
+def error_entry(
+    platform: str,
+    device_id: str,
+    message: str,
+) -> dict[str, Any]:
+    """Standard schema-3 device entry for a failed/config-invalid device.
+
+    This is the single place that builds the "nothing was collected" shape, so
+    the dispatcher's invalid-config entries and ``BaseCollector.error_payload``
+    cannot drift apart. The field set is asserted against
+    ``schema/status-contract.json`` by the test suite.
+    """
+    return {
+        "id": device_id,
+        "platform": platform,
+        "model": None,
+        "batteryLevel": None,
+        "isCharging": None,
+        "mediaTitle": None,
+        "mediaArtist": None,
+        "mediaState": "unknown",
+        "foregroundApp": None,
+        "foregroundAppName": None,
+        # No channel produced this snapshot, so expose the same transport
+        # shape every other entry carries (`active="none"`, offline).
+        "transport": {
+            "active": "none",
+            "degraded": False,
+            "online": False,
+            "lastSeenAt": None,
+            "detail": None,
+        },
+        "error": message or "采集失败",
+    }
+

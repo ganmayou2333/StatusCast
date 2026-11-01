@@ -1,0 +1,44 @@
+{
+  "$comment": "Single source of truth for the schema-3 device shape. Both the Python collectors (collectorDeviceFields / additiveFields subsets) and the C# daemon snapshot projection (snapshotDeviceFields / additiveFields exact sets) are checked against this file by tests on both sides. Adding a field or object requires editing this file first.",
+  "schema": 3,
+  "collectorDeviceFields": [
+    "id",
+    "platform",
+    "model",
+    "batteryLevel",
+    "isCharging",
+    "mediaTitle",
+    "mediaArtist",
+    "mediaState",
+    "foregroundApp",
+    "foregroundAppName",
+    "error"
+  ],
+  "snapshotDeviceFields": [
+    "id",
+    "platform",
+    "model",
+    "displayName",
+    "batteryLevel",
+    "isCharging",
+    "mediaTitle",
+    "mediaArtist",
+    "mediaState",
+    "foregroundApp",
+    "foregroundAppName",
+    "updatedAt",
+    "error"
+  ],
+  "additiveObjects": [
+    "console",
+    "node",
+    "ble",
+    "transport"
+  ],
+  "additiveFields": {
+    "console": ["online", "method", "lastSeenAt", "mac", "idleHint", "name", "type", "statusText"],
+    "node": ["ssh", "online", "statusText", "method", "source", "hostname", "lastSeenAt", "uptimeSeconds"],
+    "ble": ["address", "name", "rssi", "services", "connected", "heartRate", "statusText", "lastSeenAt"],
+    "transport": ["active", "degraded", "online", "lastSeenAt", "detail"]
+  }
+}

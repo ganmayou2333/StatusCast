@@ -14,12 +14,14 @@ public sealed class StatusServer : IDisposable
 
     private readonly object _gate = new();
     private readonly string _snapshotPath;
+    private readonly int _port;
     private HttpListener? _listener;
     private CancellationTokenSource? _cancellation;
     private Task? _listenTask;
 
-    public StatusServer()
+    public StatusServer(int port = Port)
     {
+        _port = port;
         _snapshotPath = ResolveSnapshotPath();
     }
 
@@ -37,7 +39,9 @@ public sealed class StatusServer : IDisposable
             }
 
             var listener = new HttpListener();
-            listener.Prefixes.Add($"http://localhost:{Port}/status/");
+            // One prefix for the whole loopback origin: both /status/ and the
+            // /health probe are routed in HandleRequestAsync.
+            listener.Prefixes.Add($"http://localhost:{_port}/");
             try
             {
                 listener.Start();
@@ -61,7 +65,7 @@ public sealed class StatusServer : IDisposable
             _cancellation = new CancellationTokenSource();
             _listenTask = Task.Run(() => ListenLoopAsync(listener, _cancellation.Token));
             IsRunning = true;
-            Debug.WriteLine($"[StatusServer] listening on http://localhost:{Port}/status/");
+            Debug.WriteLine($"[StatusServer] listening on http://localhost:{_port}/");
             return true;
         }
     }
@@ -149,6 +153,30 @@ public sealed class StatusServer : IDisposable
         }
     }
 
+    /// <summary>Outcome of routing one request; kept pure so tests need no socket.</summary>
+    public enum RouteKind
+    {
+        Health,
+        Status,
+        MethodNotAllowed,
+        NotFound,
+    }
+
+    internal static RouteKind RouteFor(string? httpMethod, string? absolutePath)
+    {
+        if (!string.Equals(httpMethod, "GET", StringComparison.OrdinalIgnoreCase))
+        {
+            return RouteKind.MethodNotAllowed;
+        }
+
+        return absolutePath switch
+        {
+            "/health" => RouteKind.Health,
+            "/status/" => RouteKind.Status,
+            _ => RouteKind.NotFound,
+        };
+    }
+
     private async Task HandleRequestAsync(HttpListenerContext context, CancellationToken cancellationToken)
     {
         var response = context.Response;
@@ -157,16 +185,29 @@ public sealed class StatusServer : IDisposable
             response.Headers["Access-Control-Allow-Origin"] = "*";
             response.Headers["Cache-Control"] = "no-store";
 
-            if (!string.Equals(context.Request.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase))
+            var path = context.Request.Url?.AbsolutePath;
+            switch (RouteFor(context.Request.HttpMethod, path))
             {
-                await WriteJsonAsync(response, 405, "{\"error\":\"method not allowed\"}", cancellationToken);
-                return;
-            }
+                case RouteKind.MethodNotAllowed:
+                    await WriteJsonAsync(
+                        response, 405, "{\"error\":\"method not allowed\"}", cancellationToken);
+                    return;
 
-            if (!string.Equals(context.Request.Url?.AbsolutePath, "/status/", StringComparison.Ordinal))
-            {
-                await WriteJsonAsync(response, 404, "{\"error\":\"not found\"}", cancellationToken);
-                return;
+                case RouteKind.Health:
+                    var snapshotReady = File.Exists(_snapshotPath);
+                    await WriteJsonAsync(
+                        response,
+                        200,
+                        snapshotReady
+                            ? "{\"status\":\"ok\",\"snapshotReady\":true}"
+                            : "{\"status\":\"ok\",\"snapshotReady\":false}",
+                        cancellationToken);
+                    return;
+
+                case RouteKind.NotFound:
+                    await WriteJsonAsync(
+                        response, 404, "{\"error\":\"not found\"}", cancellationToken);
+                    return;
             }
 
             byte[] body;

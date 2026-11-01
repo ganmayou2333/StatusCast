@@ -1,0 +1,5 @@
+battery=45
+charging=Charging
+model=Framework Laptop 13
+hostname=framework-lan
+uptime=12345.50

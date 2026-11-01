@@ -1,0 +1,5 @@
+battery=
+charging=
+model=MINSTOR N60
+hostname=home-server
+uptime=4321.00

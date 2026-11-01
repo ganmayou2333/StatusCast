@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>StatusCast.Daemon.Tests</AssemblyName>
+    <RootNamespace>StatusCast.Daemon.Tests</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      xunit is referenced for [Fact]/[Theory]/Assert only. The VSTest host does
+      not run in every environment (it fails to open a handle to its parent
+      process under some shells and sandboxes), so Program.cs is a tiny
+      reflection runner that executes the same xunit-attributed tests via
+      `dotnet run`. No Microsoft.NET.Test.Sdk / xunit.runner.visualstudio.
+    -->
+    <PackageReference Include="xunit" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StatusCast.Daemon\StatusCast.Daemon.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\schema\status-contract.json"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="status-contract.json" />
+  </ItemGroup>
+
+</Project>

@@ -8,8 +8,6 @@ namespace StatusCast.Daemon;
 
 internal static class Program
 {
-    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
-
     private static async Task<int> Main()
     {
         try
@@ -22,8 +20,11 @@ internal static class Program
 
         Console.Title = "StatusCast Core";
 
+        var root = ProjectLocator.FindRoot() ?? AppContext.BaseDirectory;
+        var config = StatusCastConfig.Load(root);
+
         Log("SYSTEM", "StatusCast Core v3.3.0 启动", ConsoleColor.Cyan);
-        Log("SYSTEM", "纯后台采集引擎 · WinUI 已移除", ConsoleColor.DarkGray);
+        Log("SYSTEM", $"纯后台采集引擎 · 轮询间隔 {config.RefreshInterval.TotalSeconds:0} 秒", ConsoleColor.DarkGray);
 
         // Fire-and-forget: the GitHub Release check must never block startup.
         _ = UpdateChecker.CheckForUpdatesAsync();
@@ -38,6 +39,7 @@ internal static class Program
         }
 
         Log("API", $"监听 http://localhost:{StatusServer.Port}/status/", ConsoleColor.Green);
+        Log("API", $"健康检查 http://localhost:{StatusServer.Port}/health", ConsoleColor.Green);
         Log("USB", "等待 iPhone 连接...", ConsoleColor.DarkCyan);
         Log("ADB", "等待 Android 连接...", ConsoleColor.DarkGreen);
 
@@ -52,7 +54,7 @@ internal static class Program
         {
             await RefreshAsync(coordinator, shutdown.Token);
 
-            using var timer = new PeriodicTimer(RefreshInterval);
+            using var timer = new PeriodicTimer(config.RefreshInterval);
             while (await timer.WaitForNextTickAsync(shutdown.Token))
             {
                 await RefreshAsync(coordinator, shutdown.Token);

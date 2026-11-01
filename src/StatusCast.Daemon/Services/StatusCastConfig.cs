@@ -7,8 +7,28 @@ namespace StatusCast.Daemon.Services;
 
 public sealed class StatusCastConfig
 {
+    public const int DefaultRefreshSeconds = 30;
+    private const int MinRefreshSeconds = 5;
+    private const int MaxRefreshSeconds = 3600;
+
     public Dictionary<string, string> Aliases { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
+
+    public int? RefreshIntervalSeconds { get; init; }
+
+    public TimeSpan RefreshInterval
+    {
+        get
+        {
+            var seconds = RefreshIntervalSeconds ?? DefaultRefreshSeconds;
+            if (seconds < MinRefreshSeconds || seconds > MaxRefreshSeconds)
+            {
+                return TimeSpan.FromSeconds(DefaultRefreshSeconds);
+            }
+
+            return TimeSpan.FromSeconds(seconds);
+        }
+    }
 
     public static StatusCastConfig Load(string root)
     {
@@ -38,6 +58,7 @@ public sealed class StatusCastConfig
                 Aliases = new Dictionary<string, string>(
                     loaded.Aliases ?? new Dictionary<string, string>(),
                     StringComparer.OrdinalIgnoreCase),
+                RefreshIntervalSeconds = loaded.RefreshIntervalSeconds,
             };
         }
         catch (Exception)

@@ -1,0 +1,5 @@
+battery=100
+charging=AC attached; not charging
+model=Mac15,3
+hostname=mac-studio
+boottime=1700000000

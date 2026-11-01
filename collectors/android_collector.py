@@ -1,13 +1,37 @@
-"""Android collector plugin (ADB, no root required)."""
+"""Android collector plugin (ADB, no root required).
+
+The primary channel is ``adb`` (USB or a TCP device the user connected by
+hand). When it yields no device the collector walks an ordered fallback chain
+configured from the ``Android`` section:
+
+1. ``adb mdns services`` -- discover ``_adb-tls-connect._tcp`` advertisements
+   and ``adb connect`` each address.
+2. ``ip`` (optional) -- ``adb pair`` first when ``pairPort`` + ``pairCode`` are
+   given, then ``adb connect <ip>:<port>``.
+3. ``ip`` with ``fallback`` not disabled -- ARP/ping the address and report a
+   degraded liveness-only entry (battery/media/model null, ``error`` ``None``).
+
+``pairCode`` is only ever passed as an ``adb`` argv element: it is never logged,
+never embedded in error text and never copied into the returned snapshot.
+"""
 
 from __future__ import annotations
 
 import os
 import re
+import socket
 import subprocess
+import time
 from typing import Any
 
 from .base import BaseCollector, CollectorError
+from .lan_probe import as_bool, make_transport, probe_lan
+
+DEFAULT_ADB_PORT = 5555
+ADB_MDNS_SERVICE = "_adb-tls-connect._tcp"
+
+# A "host:port" token from an `adb mdns services` row.
+_MDNS_ADDRESS_RE = re.compile(r"(\S+:\d+)")
 
 
 APP_NAMES = {
@@ -61,17 +85,105 @@ _WINDOW_FOREGROUND_RE = re.compile(
 _SYSTEM_FOREGROUND_PACKAGES = {"android", "com.android.systemui"}
 
 
+def parse_mdns_services(output: str | None) -> list[str]:
+    """Extract ``host:port`` targets from ``adb mdns services`` output.
+
+    Only ``_adb-tls-connect._tcp`` rows are considered; the address is the last
+    ``host:port`` token on the row, which tolerates the extra columns (instance
+    name, service type) and unrelated noise lines.
+    """
+    addresses: list[str] = []
+    for line in (output or "").splitlines():
+        if ADB_MDNS_SERVICE not in line:
+            continue
+        matches = _MDNS_ADDRESS_RE.findall(line)
+        if not matches:
+            continue
+        address = matches[-1]
+        if address not in addresses:
+            addresses.append(address)
+    return addresses
+
+
+def _connect_succeeded(output: str | None) -> bool:
+    text = (output or "").lower()
+    if "connected" not in text:
+        return False
+    return "failed" not in text and "cannot" not in text
+
+
+def _sanitize_port(value: Any, default: int) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return default
+    return port if 1 <= port <= 65535 else default
+
+
+def _sanitize_pair_port(value: Any) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return port if 1 <= port <= 65535 else 0
+
+
 class AndroidCollector(BaseCollector):
     """Read Android battery, model, foreground app and best-effort media."""
 
     platform = "android"
     device_id = "android"
 
-    def __init__(self, adb: str | None = None, serial: str | None = None) -> None:
+    def __init__(
+        self,
+        entry: dict[str, Any] | None = None,
+        adb: str | None = None,
+        serial: str | None = None,
+    ) -> None:
+        entry = entry if isinstance(entry, dict) else {}
         self.adb = adb or os.environ.get("ADB", "adb")
         self.serial = serial or os.environ.get("ANDROID_SERIAL")
+        self.ip = str(entry.get("ip") or "").strip() or None
+        if self.ip:
+            try:
+                socket.inet_aton(self.ip)
+            except OSError as exc:
+                raise CollectorError(f"Android IP 非法：{self.ip}") from exc
+        self.port = _sanitize_port(entry.get("port"), DEFAULT_ADB_PORT)
+        self.pair_port = _sanitize_pair_port(entry.get("pairPort"))
+        self.pair_code = str(entry.get("pairCode") or "").strip() or None
+        self.fallback = as_bool(entry.get("fallback"), True)
 
     def get_data(self) -> dict[str, Any]:
+        try:
+            return self._collect_primary()
+        except CollectorError as primary_error:
+            error = primary_error
+
+        # 1) mDNS auto-discovery + connect.
+        if self._connect_via_mdns():
+            try:
+                return self._collect_primary()
+            except CollectorError:
+                pass
+
+        # 2) Explicit ip[:port], pairing first when configured.
+        if self.ip and self._connect_via_ip():
+            try:
+                return self._collect_primary()
+            except CollectorError:
+                pass
+
+        # 3) Liveness-only LAN fallback.
+        if self.ip and self.fallback:
+            online, method, _mac = probe_lan(self.ip)
+            return self._degraded_entry(online, method)
+
+        raise error
+
+    # -- primary collection ---------------------------------------------
+
+    def _collect_primary(self) -> dict[str, Any]:
         try:
             serial = self._pick_serial()
             if not serial:
@@ -96,6 +208,8 @@ class AndroidCollector(BaseCollector):
         if level is None and model is None:
             raise CollectorError("未检测到 Android 设备")
 
+        now = int(time.time())
+        active = "adb-wifi" if ":" in self.serial else "adb"
         return {
             "id": self.device_id,
             "platform": self.platform,
@@ -107,12 +221,46 @@ class AndroidCollector(BaseCollector):
             "mediaState": media_state,
             "foregroundApp": app,
             "foregroundAppName": APP_NAMES.get(app or ""),
+            "transport": make_transport(
+                active,
+                degraded=False,
+                online=True,
+                last_seen=now,
+                detail=f"adb:{self.serial}",
+            ),
             "error": None,
         }
 
-    def _run_adb(self, args: list[str], timeout: int = 8) -> str:
+    def _degraded_entry(self, online: bool, method: str) -> dict[str, Any]:
+        now = int(time.time())
+        return {
+            "id": self.device_id,
+            "platform": self.platform,
+            "model": None,
+            "batteryLevel": None,
+            "isCharging": None,
+            "mediaTitle": None,
+            "mediaArtist": None,
+            "mediaState": "unknown",
+            "foregroundApp": None,
+            "foregroundAppName": None,
+            "transport": make_transport(
+                "lan",
+                degraded=True,
+                online=bool(online),
+                last_seen=now if online else None,
+                detail=method,
+            ),
+            "error": None,
+        }
+
+    # -- adb plumbing ----------------------------------------------------
+
+    def _run_adb(
+        self, args: list[str], timeout: int = 8, serial: bool = True
+    ) -> str:
         command = [self.adb]
-        if self.serial:
+        if serial and self.serial:
             command += ["-s", self.serial]
         command += args
         result = subprocess.run(
@@ -139,6 +287,54 @@ class AndroidCollector(BaseCollector):
             if len(parts) >= 2 and parts[1] == "device":
                 return parts[0]
         return None
+
+    # -- fallback chain --------------------------------------------------
+
+    def _connect_via_mdns(self) -> bool:
+        try:
+            output = self._run_adb(["mdns", "services"], timeout=5, serial=False)
+        except Exception:
+            return False
+        for address in parse_mdns_services(output):
+            try:
+                result = self._run_adb(
+                    ["connect", address], timeout=5, serial=False
+                )
+            except Exception:
+                continue
+            if _connect_succeeded(result):
+                return True
+        return False
+
+    def _connect_via_ip(self) -> bool:
+        if not self.ip:
+            return False
+        if self.pair_port and self.pair_code:
+            self._pair()
+        try:
+            output = self._run_adb(
+                ["connect", f"{self.ip}:{self.port}"], timeout=5, serial=False
+            )
+        except Exception:
+            return False
+        return _connect_succeeded(output)
+
+    def _pair(self) -> None:
+        """Best-effort ``adb pair``; failures are swallowed generically.
+
+        The pair code travels only as an argv element. Nothing here propagates
+        an exception (which could carry the argv in its text) or records it.
+        """
+        try:
+            self._run_adb(
+                ["pair", f"{self.ip}:{self.pair_port}", self.pair_code],
+                timeout=8,
+                serial=False,
+            )
+        except Exception:
+            return
+
+    # -- device reads ----------------------------------------------------
 
     def _get_model(self) -> str | None:
         model = self._run_adb(["shell", "getprop", "ro.product.model"]).strip()

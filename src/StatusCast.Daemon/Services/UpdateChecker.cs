@@ -97,7 +97,8 @@ internal static class UpdateChecker
         return new Version(
             version.Major,
             version.Minor,
-            Math.Max(version.Build, 0));
+            Math.Max(version.Build, 0),
+            Math.Max(version.Revision, 0));
     }
 
     private static bool TryParseVersion(string? tag, out Version version)

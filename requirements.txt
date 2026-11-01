@@ -1,2 +1,3 @@
 # iPhone USB collection (status_core.py)
 pymobiledevice3==11.43.1
+bleak==3.0.2  # BLE peripherals (BleDevices); WinRT backends ship as its dependencies

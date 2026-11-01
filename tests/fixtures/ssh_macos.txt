@@ -1,0 +1,5 @@
+battery=87
+charging=Charging
+model=Mac15,3
+hostname=mac-studio
+boottime=1700000000

@@ -1,0 +1,5 @@
+battery=64
+charging=Discharging
+model=ThinkPad X1 Carbon Gen 11
+hostname=workbench
+uptime=98765.43
