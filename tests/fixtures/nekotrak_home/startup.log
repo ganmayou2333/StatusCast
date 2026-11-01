@@ -1,0 +1,11 @@
+2026-10-30T10:00:00.123456789+08:00 [Startup] pid=111 version=1.1.12 phase=0 active_ms=1000 process entered
+2026-10-30T10:00:00.200000000+08:00 [Startup] pid=111 version=1.1.12 phase=1 active_ms=1076 entered Initializing
+2026-10-30T10:00:02.000000000+08:00 [Startup] pid=111 version=1.1.12 phase=1 active_ms=2876 profile and application state ready
+2026-10-30T10:00:02.100000000+08:00 [Startup] pid=111 version=1.1.12 phase=2 active_ms=2976 entered BackendReady
+2026-10-30T10:00:02.300000000+08:00 [Startup] pid=111 version=1.1.12 phase=3 active_ms=3176 entered Ready
+2026-10-30T11:00:00.000000000+08:00 [Startup] pid=111 version=1.1.12 phase=5 active_ms=3603176 exit requested
+2026-10-30T12:00:00.000000000+08:00 [Startup] pid=222 version=1.1.13 phase=0 active_ms=5000 process entered
+2026-10-30T12:00:00.100000000+08:00 [Startup] pid=222 version=1.1.13 phase=1 active_ms=5100 entered Initializing
+2026-10-30T12:00:01.500000000+08:00 [Startup] pid=222 version=1.1.13 phase=1 active_ms=6500 profile and application state ready
+2026-10-30T12:00:01.700000000+08:00 [Startup] pid=222 version=1.1.13 phase=2 active_ms=6700 entered BackendReady
+2026-10-30T12:00:02.000000000+08:00 [Startup] pid=222 version=1.1.13 phase=3 active_ms=7000 entered Ready

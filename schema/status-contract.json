@@ -33,12 +33,14 @@
     "console",
     "node",
     "ble",
+    "nekotrak",
     "transport"
   ],
   "additiveFields": {
     "console": ["online", "method", "lastSeenAt", "mac", "idleHint", "name", "type", "statusText"],
     "node": ["ssh", "online", "statusText", "method", "source", "hostname", "lastSeenAt", "uptimeSeconds"],
     "ble": ["address", "name", "rssi", "services", "connected", "heartRate", "statusText", "lastSeenAt"],
+    "nekotrak": ["version", "source", "uptimeSec", "startedAt", "lastLogAt", "trackerActive", "trackerStartedAt", "trackerStoppedAt", "currentGame", "currentGameAppId", "pet", "pomodoro", "warns"],
     "transport": ["active", "degraded", "online", "lastSeenAt", "detail"]
   }
 }

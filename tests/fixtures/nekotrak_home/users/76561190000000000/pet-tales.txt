@@ -1,0 +1,2 @@
+{"id":"evt-1","occurredAt":1793354676026,"category":"fight","definitionId":"fight_v05","experience":0,"moodDelta":-2.0,"textKey":"fight_v05","catName":"Aymer1K","otherCatName":"毛球","winnerName":"毛球","rounds":3,"test":false}
+{"id":"evt-2","occurredAt":1793357098682,"category":"eat","definitionId":"eat_v02","experience":3,"moodDelta":2.0,"textKey":"eat_v02","catName":"Aymer1K","test":false}

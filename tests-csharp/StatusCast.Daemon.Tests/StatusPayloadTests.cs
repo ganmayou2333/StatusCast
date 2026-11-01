@@ -63,6 +63,24 @@ public sealed class StatusPayloadTests
             LastSeenAt = 1,
             Detail = "arp",
         },
+        NekoTrak = new NekoTrakStatus
+        {
+            Version = "1.1.13",
+            Source = "L1",
+            UptimeSec = 60,
+            StartedAt = "2026-10-30T12:00:00.000+08:00",
+            LastLogAt = "2026-10-30T12:00:02.000+08:00",
+            TrackerActive = true,
+            TrackerStartedAt = "2026-10-30T12:00:02.000+08:00",
+            TrackerStoppedAt = null,
+            CurrentGame = "ELDEN RING",
+            CurrentGameAppId = 1245620,
+            Pet = JsonDocument.Parse(
+                "{\"name\":\"Aymer1K\",\"lastEvent\":null,\"emoji\":null,\"eventCount\":2}")
+                .RootElement.Clone(),
+            Pomodoro = null,
+            Warns = new List<string>(),
+        },
     };
 
     [Fact]
@@ -85,6 +103,7 @@ public sealed class StatusPayloadTests
         Assert.DoesNotContain("console", noObjects.Keys);
         Assert.DoesNotContain("node", noObjects.Keys);
         Assert.DoesNotContain("ble", noObjects.Keys);
+        Assert.DoesNotContain("nekotrak", noObjects.Keys);
         Assert.DoesNotContain("transport", noObjects.Keys);
 
         var full = StatusCoordinator.BuildDevicePayload(FullDevice(), 1);
@@ -98,6 +117,7 @@ public sealed class StatusPayloadTests
     [InlineData("console")]
     [InlineData("node")]
     [InlineData("ble")]
+    [InlineData("nekotrak")]
     [InlineData("transport")]
     public void EachAdditiveObjectSerializesExactlyContractFields(string name)
     {

@@ -21,7 +21,9 @@ Beyond the always-on phone collectors, ``config.json`` may declare extra
 devices: ``Consoles`` entries are probed over the LAN (C1, ARP/ping),
 ``SshNodes`` entries are probed through the Windows OpenSSH client (C2b,
 Mac/Linux nodes) and ``BleDevices`` entries are scanned/connected as Bluetooth
-LE peripherals. Missing files, broken JSON or empty lists keep the v3.3
+LE peripherals. A local ``NekoTrak`` installation is collected as its own
+``windows`` device; a machine that never ran NekoTrak keeps today's output
+exactly. Missing files, broken JSON or empty lists keep the v3.3
 behaviour exactly. Collectors run in a thread pool so one node's worst-case
 8 s SSH timeout never stacks with the next one's; at most eight run at once
 and larger configs are processed in ordered batches of eight.
@@ -46,6 +48,8 @@ from collectors.android_collector import AndroidCollector
 from collectors.ble_collector import BleDeviceCollector
 from collectors.console_collector import ConsoleCollector
 from collectors.iphone_collector import IPhoneCollector
+from collectors.nekotrak_collector import NekoTrakCollector
+from collectors.nekotrak_collector import available as nekotrak_available
 from collectors.ssh_node_collector import SshNodeCollector
 from collectors.base import CollectorError, error_entry
 from collectors.lan_probe import make_transport
@@ -144,6 +148,17 @@ def build_collectors(
                 collectors.append(BleDeviceCollector(entry))
             except CollectorError as exc:
                 invalid.append(_invalid_entry("ble", device_id, str(exc)))
+
+    # NekoTrak runs on this PC instead of being config-driven. It is only added
+    # when its data root exists, so a machine that never ran NekoTrak gets no
+    # permanently-red row -- the same "absent section, absent device" rule the
+    # config-driven collectors follow. Whether it is *running* is decided per
+    # refresh, so a killed app turns into the standard error entry.
+    if nekotrak_available():
+        try:
+            collectors.append(NekoTrakCollector())
+        except CollectorError as exc:
+            invalid.append(_invalid_entry("windows", "nekotrak", str(exc)))
 
     return collectors, invalid
 

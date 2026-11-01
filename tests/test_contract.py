@@ -21,6 +21,7 @@ from collectors import console_collector as cc
 from collectors import iphone_collector as ic
 from collectors import ssh_node_collector as sc
 from collectors.base import CollectorError, error_entry
+from collectors import nekotrak_collector as nc
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRACT = json.loads(
@@ -45,7 +46,7 @@ class ContractTestCase(unittest.TestCase):
                 "transport object does not match the contract",
             )
 
-        for name in ("console", "node", "ble"):
+        for name in ("console", "node", "ble", "nekotrak"):
             if name in device:
                 unknown_nested = set(device[name]) - set(
                     CONTRACT["additiveFields"][name]
@@ -103,6 +104,22 @@ class ContractTestCase(unittest.TestCase):
         ):
             return collector.get_data()
 
+    def nekotrak_payload(self) -> dict:
+        data = {name: None for name in nc.NEKOTRAK_FIELDS}
+        data.update(
+            {
+                "version": "1.1.13",
+                "source": "L1",
+                "uptimeSec": 60,
+                "trackerActive": True,
+                "pet": {"name": "Aymer1K", "lastEvent": None, "emoji": None, "eventCount": 0},
+                "warns": [],
+                "foregroundApp": "game.exe",
+            }
+        )
+        with mock.patch.object(nc, "collect", return_value=data):
+            return nc.NekoTrakCollector().get_data()
+
     def iphone_payload(self) -> dict:
         status = ic._IPhoneStatus(
             battery_level=87,
@@ -133,6 +150,7 @@ class CollectorOutputContractTests(ContractTestCase):
             "console": self.console_payload(),
             "ssh": self.ssh_payload(),
             "ble": self.ble_payload(),
+            "nekotrak": self.nekotrak_payload(),
             "iphone": self.iphone_payload(),
             "android": self.android_payload(),
         }
@@ -145,8 +163,14 @@ class CollectorOutputContractTests(ContractTestCase):
             self.console_payload(),
             self.ssh_payload(),
             self.ble_payload(),
+            self.nekotrak_payload(),
         ]
-        produced = {name for payload in payloads for name in ("console", "node", "ble", "transport") if name in payload}
+        produced = {
+            name
+            for payload in payloads
+            for name in ("console", "node", "ble", "nekotrak", "transport")
+            if name in payload
+        }
         self.assertEqual(produced, set(CONTRACT["additiveObjects"]))
 
     def test_transport_shape_is_identical_everywhere(self):
@@ -171,13 +195,18 @@ class ErrorEntryContractTests(ContractTestCase):
         )
 
     def test_dispatcher_isolates_invalid_entries(self):
-        payload = status_core.collect_all(
-            config={
-                "Consoles": [{"id": "bad"}],
-                "SshNodes": [{"id": "n", "user": "u", "host": "h", "platform": "windows"}],
-                "BleDevices": [{"id": "b"}],
-            }
-        )
+        # The local NekoTrak device would otherwise depend on the machine
+        # running the suite; these tests only care about config-driven rows.
+        with mock.patch.object(
+            status_core, "nekotrak_available", return_value=False
+        ):
+            payload = status_core.collect_all(
+                config={
+                    "Consoles": [{"id": "bad"}],
+                    "SshNodes": [{"id": "n", "user": "u", "host": "h", "platform": "windows"}],
+                    "BleDevices": [{"id": "b"}],
+                }
+            )
         for device in payload["devices"]:
             with self.subTest(device=device["id"]):
                 self.assert_conforms(device)

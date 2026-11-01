@@ -1,0 +1,5 @@
+[2026-10-30][12:00:02][INFO][nekotrak_lib::services::tracker::core] [TRACKER] All monitors started
+[2026-10-30][12:01:00][WARN][custom_text_command] {"elapsed_ms":5010,"error_kind":"timeout","event":"custom_text_command_failed","exit_code":null,"expression_index":1,"shell":"powershell","source":"presence","stderr_bytes":0,"stdout_bytes":0,"suppressed_count":1,"template_id":"fixture"}
+[2026-10-30][12:02:00][WARN][custom_text_command] {"elapsed_ms":5012,"error_kind":"timeout","event":"custom_text_command_failed","exit_code":null,"expression_index":1,"shell":"powershell","source":"presence","stderr_bytes":0,"stdout_bytes":0,"suppressed_count":2,"template_id":"fixture"}
+[2026-10-30][12:02:30][INFO][nekotrak_lib::services::tracker::utils] [TRACKER] app.emit('active_window_changed') took 113ms
+[2026-10-30][12:03:00][INFO][nekotrak_lib::services::tracker::core] [TRACKER] Sent stop signal to window monitor thread

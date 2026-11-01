@@ -20,3 +20,17 @@
 - [ ] 快照未生成时 `/health` 回 503；`/status/` 行为与现在逐字段一致
 - [ ] `windows` 设备拿到 🖥 图标与直通机型名；原 iPhone 映射结果不变
 - [ ] C# 测试项目覆盖新路由与新图标映射，`dotnet build` 零警告
+
+## Comments
+
+**2026-11-01 — 范围已缩小，开工前先读这条。**
+
+02 落地时，`nekotrak` 进入共享契约（`schema/status-contract.json` 的 `additiveObjects`）后，C# 侧不同步解码就会被 `StatusPayloadTests` 判红。因此 02 已顺带完成：
+
+- `NekoTrakStatus` 强类型 + `DeviceStatus.NekoTrak`
+- `ParseNekoTrak`（含 `pet`/`pomodoro` 原样透传）
+- `StatusCoordinator.BuildDevicePayload` 的 `nekotrak` 键
+- `WithAlias` / `ToStaleDevice` 的复制
+- C# 测试：契约字段集合、payload 附加、快照信封、解析往返
+
+**本票剩下**：`PlatformIcon` 的 `windows` 分支、`ModelDisplay` 的 iPhone 映射搬进静态字典并让 windows 直通、`/health` 从 `{status,snapshotReady}` 扩到 `{ok,deviceCount,generatedAt,schema}` 并支持 503、`127.0.0.1` 与 `localhost` 双拼写，以及对应测试。契约与透传部分不必重做。

@@ -615,6 +615,16 @@ class CollectorSemanticsTests(BleTestBase):
 
 
 class StatusCoreBleTests(BleTestBase):
+    def setUp(self) -> None:
+        super().setUp()
+        # The local NekoTrak device depends on the machine running the suite;
+        # these tests assert the exact collector inventory.
+        nekotrak = mock.patch.object(
+            status_core, "nekotrak_available", return_value=False
+        )
+        nekotrak.start()
+        self.addCleanup(nekotrak.stop)
+
     def test_ble_devices_are_instantiated_in_order(self):
         calls: list[dict] = []
 

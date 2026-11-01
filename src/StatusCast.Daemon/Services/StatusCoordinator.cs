@@ -127,6 +127,7 @@ public sealed class StatusCoordinator
         Console = device.Console,
         Node = device.Node,
         Ble = device.Ble,
+        NekoTrak = device.NekoTrak,
     };
 
     private bool TryGetLastGoodDevices(out IReadOnlyList<DeviceStatus> devices)
@@ -208,6 +209,11 @@ public sealed class StatusCoordinator
         if (device.Ble is not null)
         {
             payload["ble"] = device.Ble;
+        }
+
+        if (device.NekoTrak is not null)
+        {
+            payload["nekotrak"] = device.NekoTrak;
         }
 
         return payload;

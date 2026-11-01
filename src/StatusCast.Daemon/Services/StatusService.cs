@@ -75,6 +75,30 @@ public sealed class BleStatus
     public long? LastSeenAt { get; init; }
 }
 
+/// <summary>
+/// NekoTrak desktop-app block emitted by the Python layer as a nested
+/// "nekotrak" object. Every member is optional: a missing or mistyped JSON
+/// value maps to null rather than failing the whole device. Nested structures
+/// (pet, pomodoro) are passed through as opaque JSON, so a future pomodoro
+/// shape needs no daemon change.
+/// </summary>
+public sealed class NekoTrakStatus
+{
+    public string? Version { get; init; }
+    public string? Source { get; init; }
+    public long? UptimeSec { get; init; }
+    public string? StartedAt { get; init; }
+    public string? LastLogAt { get; init; }
+    public bool? TrackerActive { get; init; }
+    public string? TrackerStartedAt { get; init; }
+    public string? TrackerStoppedAt { get; init; }
+    public string? CurrentGame { get; init; }
+    public int? CurrentGameAppId { get; init; }
+    public JsonElement? Pet { get; init; }
+    public JsonElement? Pomodoro { get; init; }
+    public List<string>? Warns { get; init; }
+}
+
 public sealed class DeviceStatus
 {
     public string Platform { get; init; } = "ios";
@@ -96,6 +120,7 @@ public sealed class DeviceStatus
     public NodeStatus? Node { get; init; }
     public TransportStatus? Transport { get; init; }
     public BleStatus? Ble { get; init; }
+    public NekoTrakStatus? NekoTrak { get; init; }
 
     public string ModelDisplay => DeviceModel switch
     {
@@ -171,6 +196,7 @@ public sealed class DeviceStatus
         Node = Node,
         Transport = Transport,
         Ble = Ble,
+        NekoTrak = NekoTrak,
     };
 }
 
@@ -333,7 +359,42 @@ internal static class PythonStatusRunner
             Node = ParseNode(item),
             Transport = ParseTransport(item),
             Ble = ParseBle(item),
+            NekoTrak = ParseNekoTrak(item),
         };
+    }
+
+    private static NekoTrakStatus? ParseNekoTrak(JsonElement item)
+    {
+        if (!item.TryGetProperty("nekotrak", out var value)
+            || value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new NekoTrakStatus
+        {
+            Version = GetString(value, "version"),
+            Source = GetString(value, "source"),
+            UptimeSec = GetLong(value, "uptimeSec"),
+            StartedAt = GetString(value, "startedAt"),
+            LastLogAt = GetString(value, "lastLogAt"),
+            TrackerActive = GetBool(value, "trackerActive"),
+            TrackerStartedAt = GetString(value, "trackerStartedAt"),
+            TrackerStoppedAt = GetString(value, "trackerStoppedAt"),
+            CurrentGame = GetString(value, "currentGame"),
+            CurrentGameAppId = GetInt(value, "currentGameAppId"),
+            Pet = GetObjectOrNull(value, "pet"),
+            Pomodoro = GetObjectOrNull(value, "pomodoro"),
+            Warns = GetStringArray(value, "warns"),
+        };
+    }
+
+    private static JsonElement? GetObjectOrNull(JsonElement item, string name)
+    {
+        return item.TryGetProperty(name, out var value)
+               && value.ValueKind == JsonValueKind.Object
+            ? value.Clone()
+            : null;
     }
 
     private static ConsoleStatus? ParseConsole(JsonElement item)

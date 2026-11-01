@@ -50,7 +50,23 @@ public sealed class StatusParsingTests
                             "lastSeenAt": 1793458293, "detail": "AA:BB:CC:DD:EE:FF"}
             },
             {"id": "android", "platform": "android", "model": "Pixel 7",
-             "batteryLevel": 62, "mediaState": "unknown", "error": null}
+             "batteryLevel": 62, "mediaState": "unknown", "error": null},
+            {
+              "id": "nekotrak", "platform": "windows", "model": "NekoTrak 1.1.13",
+              "batteryLevel": null, "mediaState": "unknown", "error": null,
+              "nekotrak": {"version": "1.1.13", "source": "L1", "uptimeSec": 300,
+                           "startedAt": "2026-10-30T12:00:00.000+08:00",
+                           "lastLogAt": "2026-10-30T12:00:02.000+08:00",
+                           "trackerActive": false,
+                           "trackerStartedAt": "2026-10-30T12:00:02.000+08:00",
+                           "trackerStoppedAt": "2026-10-30T12:03:00.000+08:00",
+                           "currentGame": "ELDEN RING", "currentGameAppId": 1245620,
+                           "pet": {"name": "Aymer1K", "lastEvent": null,
+                                   "emoji": null, "eventCount": 2},
+                           "pomodoro": null, "warns": []},
+              "transport": {"active": "process", "degraded": false, "online": true,
+                            "lastSeenAt": 1793458293, "detail": "nekotrak"}
+            }
           ]
         }
         """;
@@ -60,7 +76,7 @@ public sealed class StatusParsingTests
     {
         var devices = PythonStatusRunner.ParseDevices(FullSnapshot).ToList();
 
-        Assert.Equal(5, devices.Count);
+        Assert.Equal(6, devices.Count);
 
         var iphone = devices[0];
         Assert.Equal("ios", iphone.Platform);
@@ -94,6 +110,18 @@ public sealed class StatusParsingTests
         Assert.Equal(new[] { "battery", "heart_rate" }, ble.Ble.Services);
         Assert.True(ble.Ble.Connected);
         Assert.Equal(72, ble.Ble.HeartRate);
+
+        var nekotrak = devices[5];
+        Assert.Equal("windows", nekotrak.Platform);
+        Assert.NotNull(nekotrak.NekoTrak);
+        Assert.Equal("1.1.13", nekotrak.NekoTrak!.Version);
+        Assert.Equal(300L, nekotrak.NekoTrak.UptimeSec);
+        Assert.False(nekotrak.NekoTrak.TrackerActive);
+        Assert.Equal("ELDEN RING", nekotrak.NekoTrak.CurrentGame);
+        Assert.Equal(1245620, nekotrak.NekoTrak.CurrentGameAppId);
+        Assert.Equal("2026-10-30T12:03:00.000+08:00", nekotrak.NekoTrak.TrackerStoppedAt);
+        Assert.NotNull(nekotrak.NekoTrak.Pet);
+        Assert.Equal("process", nekotrak.Transport!.Active);
     }
 
     [Fact]

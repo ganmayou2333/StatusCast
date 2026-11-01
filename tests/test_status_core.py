@@ -133,6 +133,13 @@ class CollectAllTests(unittest.TestCase):
             patcher = mock.patch.object(status_core, name, fake)
             patcher.start()
             self.addCleanup(patcher.stop)
+        # The local NekoTrak device depends on the machine running the suite;
+        # dispatcher tests assert exact inventories, so keep it out of them.
+        nekotrak = mock.patch.object(
+            status_core, "nekotrak_available", return_value=False
+        )
+        nekotrak.start()
+        self.addCleanup(nekotrak.stop)
 
     def test_order_and_isolation_with_console(self):
         payload = status_core.collect_all(config={
@@ -169,6 +176,15 @@ class CollectAllTests(unittest.TestCase):
 
 
 class PhoneConfigTests(unittest.TestCase):
+    def setUp(self):
+        # build_collectors() also registers the local NekoTrak device when it
+        # exists on this machine; these tests assert config-driven inventories.
+        nekotrak = mock.patch.object(
+            status_core, "nekotrak_available", return_value=False
+        )
+        nekotrak.start()
+        self.addCleanup(nekotrak.stop)
+
     def test_phone_config_sections_are_passed_to_collectors(self):
         with mock.patch.object(status_core, "IPhoneCollector") as iphone, \
              mock.patch.object(status_core, "AndroidCollector") as android:

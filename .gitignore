@@ -65,6 +65,10 @@ status.json
 tmp/
 temp/
 
+# Test fixtures mirror real NekoTrak log files, so they must be tracked even
+# though runtime logs are ignored.
+!tests/fixtures/**/*.log
+
 # =========================
 # Local config / secrets
 # =========================
