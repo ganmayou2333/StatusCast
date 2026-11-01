@@ -12,7 +12,7 @@
 
 **Blocked by:** 05
 
-**Status:** blocked — probe ready and verified; needs one NekoTrak restart with the debug port
+**Status:** blocked — CDP ruled out on this build; UIA probe needs one running pomodoro
 
 - [ ] 二选一成立：🍅 上屏，或在计划文档留下明确不可行结论（写明卡在哪一步）
 - [ ] 失败时探测代码已删除，无残留开关或死代码
@@ -57,3 +57,23 @@ python G:\StatusCast\NekoTool\scripts\probe_nekotrak_cdp.py
 三种结果对应三条路：出现 `Visible countdown(s) found` → 有戏，直接接 `nekotrak.pomodoro.remainingSeconds`（`write_to_obs.ps1` 的 🍅 段已经预留好）；只有 tauriKeys 没有倒计时 → 需要枚举 IPC 命令名，再评估值不值；两者都没有 → 按票面失败分支**删掉探针**、把结论写进计划文档、回落纯 L1。
 
 **红线遵守**：探针只反向读 `127.0.0.1:9222`、2 秒上限、不进采集器默认路径、不改任何启动配置、`setup.ps1` 里没有它。调试端口只出现在本票与探针的默认参数里，不会被任何自动配置写入。
+
+**2026-11-01 11:52 — CDP 路线宣告不可行（有证据），换 UIA。**
+
+用户按说明带 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` 重启了（新 PID 9456，11:50:51 起，父进程就是那个 PowerShell，日志 `[Startup] pid=9456 ... entered Ready` 正常）。结果：
+
+- `netstat` 无 9222 监听；探针仍 `CDP port is not open`
+- 遍历所有 `msedgewebview2.exe`，**没有任何一个**带 `--remote-debugging-port`（grep 计数 0）
+- NekoTrak 的 webview 数据目录 `%APPDATA%\NekoTrak\com.bocchithedev.nekotrak\EBWebView\EBWebView` 下**没有** `DevToolsActivePort` 文件
+- 应用自带 **FixedVersionRuntime 151.0.4129.107**，且窗口类名是 `Tauri Window` → Tauri 自己给 WebView2 传了 additionalBrowserArgs，环境变量被忽略
+
+**结论：环境变量这条 CDP 路线在这个打包版上不成立。**要 CDP 只能改应用自身的构建配置或注入，超出本 spike 的红线（不该为了看个番茄钟去改别人的应用）。
+
+**替代路线：Windows UI Automation。** 已实测 WebView2 的 DOM 文本通过 UIA 可读（`Add-Type -AssemblyName UIAutomationClient`，按 PID 找窗口，第一次查询会唤醒 Chromium 的无障碍树，需要重试几次）：
+
+- 90 多个带标签元素：`番茄钟`、`开始`、`停止`、`编辑: 专注分钟数`、`上一周期`、`总专注时长`、`69.1%` ……
+- Document 元素的 Value 是 `http://tauri.localhost/`，确认是 Tauri 应用
+
+新增 `scripts/probe_nekotrak_uia.ps1`：只读，报告窗口数、元素数、以及所有形如 `mm:ss` 的文本。当前空闲状态下**没有倒计时文本**（界面上只有「开始/停止」按钮），所以还需要一次「番茄钟正在跑」的观测才能定论。
+
+**下一步**：在 NekoTrak 里点一次「开始」（25 分钟那个），然后重跑 `scripts/probe_nekotrak_uia.ps1`。出现 `countdown: 24:59` 这类文本 → UIA 可用，接着把读取接进采集器；仍然没有 → UIA 也看不到（定时器可能是画布绘制），按票面失败分支收尾。
