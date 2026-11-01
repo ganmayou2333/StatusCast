@@ -105,8 +105,11 @@ class TrackerLogTests(NekoTrakTestCase):
         self.assertFalse(parsed["trackerActive"])
         self.assertEqual(parsed["customTextFailures"], 2)
         self.assertEqual(parsed["customTextElapsedMs"], [5010.0, 5012.0])
-        self.assertEqual(parsed["trackerStartedAt"], "2026-10-30T12:00:02.000+08:00")
-        self.assertEqual(parsed["trackerStoppedAt"], "2026-10-30T12:03:00.000+08:00")
+        # NekoTrak's log lines carry a bare wall clock and no offset, so the
+        # parser attaches the machine's local zone. Assert the wall clock only:
+        # pinning an offset here made the suite fail on UTC CI runners.
+        self.assertTrue(parsed["trackerStartedAt"].startswith("2026-10-30T12:00:02"))
+        self.assertTrue(parsed["trackerStoppedAt"].startswith("2026-10-30T12:03:00"))
 
     def test_start_after_stop_is_active(self):
         parsed = nc.parse_tracker_log(
