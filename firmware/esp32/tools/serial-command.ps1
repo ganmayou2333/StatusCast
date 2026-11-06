@@ -24,10 +24,17 @@ param(
 $ErrorActionPreference = 'Stop'
 $sp = New-Object System.IO.Ports.SerialPort $Port, $Baud, 'None', 8, 'One'
 $sp.ReadTimeout = 300
+# Without a bounded write timeout a wedged USB-serial TX blocks forever and the
+# whole script hangs instead of reporting the problem.
+$sp.WriteTimeout = 1500
 $sp.Encoding = [System.Text.Encoding]::UTF8
 $sp.DtrEnable = $false
 $sp.RtsEnable = $false
-try { $sp.Open() } catch { throw "cannot open $Port : $_" }
+try {
+    $sp.Open()
+} catch {
+    throw "cannot open $Port : $_"
+}
 $sp.DtrEnable = $false
 $sp.RtsEnable = $false
 Start-Sleep -Milliseconds $BootWaitMs
@@ -35,9 +42,14 @@ Start-Sleep -Milliseconds $BootWaitMs
 $queue = @()
 if ($LinesFile) { $queue += Get-Content -LiteralPath $LinesFile -Encoding UTF8 }
 $queue += $Lines
-foreach ($line in $queue) {
-    $sp.Write("$line`r`n")
-    Start-Sleep -Milliseconds 250
+try {
+    foreach ($line in $queue) {
+        $sp.Write("$line`r`n")
+        Start-Sleep -Milliseconds 250
+    }
+} catch {
+    $sp.Close()
+    throw "serial write failed (is the port wedged? unplug/replug the USB cable): $_"
 }
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
