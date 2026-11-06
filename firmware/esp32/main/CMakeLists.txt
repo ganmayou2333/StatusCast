@@ -22,6 +22,7 @@ idf_component_register(
         "sensors/dht20.c"
         "storage/config_store.c"
         "console/serial_console.c"
+        "ui/status_led.c"
         "ui/font6x8.c"
         "ui/font8x16.c"
         "ui/ssd1315.c"

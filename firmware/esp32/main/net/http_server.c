@@ -8,6 +8,7 @@
 #include "esp_log.h"
 
 #include "app_state.h"
+#include "ui/status_led.h"
 
 static const char *TAG = "sc_http";
 
@@ -84,12 +85,13 @@ static esp_err_t handle_diag(httpd_req_t *req)
                           "{\"deviceCount\":%d,\"generatedAt\":%lld,"
                           "\"roundMillis\":%u,\"i2c\":[%s],"
                           "\"sensor\":{\"ok\":%s,\"temperatureC\":%.1f,"
-                          "\"humidityPct\":%.1f}}",
+                          "\"humidityPct\":%.1f},\"led\":\"%s\"}",
                           app_state_device_count(), (long long)app_state_generated_at(),
                           (unsigned)app_state_last_round_millis(),
                           app_state_i2c_list(i2c, sizeof(i2c)),
                           sensor.ok ? "true" : "false", sensor.temperature_c,
-                          sensor.humidity_pct);
+                          sensor.humidity_pct,
+                          status_led_name(status_led_get()));
     if (length <= 0 || (size_t)length >= sizeof(body)) {
         return respond_literal(req, "503 Service Unavailable", BODY_NOT_READY);
     }

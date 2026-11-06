@@ -20,6 +20,7 @@
 #include "sensors/dht20.h"
 #include "storage/config_store.h"
 #include "ui/ssd1315.h"
+#include "ui/status_led.h"
 #include "ui/ui.h"
 
 static const char *TAG = "sc_main";
@@ -62,6 +63,37 @@ static void append_config_errors(sc_snapshot_t *snapshot, int64_t now)
         device->transport.online.has = true;
         device->transport.online.v = false;
     }
+}
+
+/* green: everything reported online; amber: something offline/degraded;
+ * red: WiFi down or the PC feed fell back to stale rows. */
+static status_led_state_t compute_led_state(const sc_snapshot_t *snapshot)
+{
+    if (!wifi_is_connected()) {
+        return STATUS_LED_ERROR;
+    }
+    bool degraded = false;
+    for (int i = 0; i < snapshot->count; ++i) {
+        const sc_device_t *device = &snapshot->devices[i];
+        if (device->error.has) {
+            if (strstr(device->error.v, "读取超时") != NULL) {
+                return STATUS_LED_ERROR;
+            }
+            degraded = true;
+            continue;
+        }
+        if (device->has_console && device->console.online.has && !device->console.online.v) {
+            degraded = true;
+        }
+        if (device->has_ble && device->ble.connected.has && !device->ble.connected.v) {
+            degraded = true;
+        }
+        if (device->has_transport && device->transport.degraded.has &&
+            device->transport.degraded.v) {
+            degraded = true;
+        }
+    }
+    return degraded ? STATUS_LED_DEGRADED : STATUS_LED_OK;
 }
 
 static void run_round(void)
@@ -110,6 +142,8 @@ static void run_round(void)
 
     const uint32_t elapsed = (uint32_t)((xTaskGetTickCount() - start) * portTICK_PERIOD_MS);
     app_state_note_round(s_snapshot->count, elapsed);
+
+    status_led_set(compute_led_state(s_snapshot));
     ESP_LOGI(TAG, "round: %d device(s), %u bytes, %u ms", s_snapshot->count, (unsigned)length,
              (unsigned)elapsed);
 }
@@ -167,6 +201,7 @@ void app_main(void)
     (void)http_server_start((uint16_t)CONFIG_SC_HTTP_PORT);
     ble_collector_init();
     serial_console_start();
+    status_led_init();
     ui_start();
 
     /* Log the I2C bus at boot: with the OLED and (optionally) a DHT20 sharing

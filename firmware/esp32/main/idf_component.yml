@@ -5,3 +5,5 @@ dependencies:
   # lwip) ships with ESP-IDF itself.
   joltwallet/littlefs: ">=1.11.0"
   espressif/mdns: ">=1.8.0"
+  # Onboard WS2812 status light (one pixel, GPIO48).
+  espressif/led_strip: ">=3.0.0"
