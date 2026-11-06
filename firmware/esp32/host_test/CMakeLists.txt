@@ -24,6 +24,7 @@ target_include_directories(sc_host_test PRIVATE
 
 target_compile_definitions(sc_host_test PRIVATE
     SC_CONTRACT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../../schema/status-contract.json"
+    SC_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
 )
 
 if(MSVC)

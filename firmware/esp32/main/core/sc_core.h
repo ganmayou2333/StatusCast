@@ -118,11 +118,12 @@ typedef struct {
     sc_str_t version;
     sc_str_t source;
     sc_i64_t uptime_sec;
-    sc_i64_t started_at;
-    sc_i64_t last_log_at;
+    /* The daemon emits these four as ISO-8601 strings, not epoch seconds. */
+    sc_str_t started_at;
+    sc_str_t last_log_at;
     sc_bool_t tracker_active;
-    sc_i64_t tracker_started_at;
-    sc_i64_t tracker_stopped_at;
+    sc_str_t tracker_started_at;
+    sc_str_t tracker_stopped_at;
     sc_str_t current_game;
     sc_i32_t current_game_app_id;
     bool has_pet;

@@ -1,0 +1,100 @@
+{
+  "schema": 3,
+  "generatedAt": 1793504032,
+  "devices": [
+    {
+      "id": "iphone",
+      "platform": "ios",
+      "model": null,
+      "displayName": "\u672A\u77E5\u673A\u578B",
+      "batteryLevel": null,
+      "isCharging": null,
+      "mediaTitle": null,
+      "mediaArtist": null,
+      "mediaState": "unknown",
+      "foregroundApp": null,
+      "foregroundAppName": null,
+      "updatedAt": 1793504032,
+      "error": "\u672A\u68C0\u6D4B\u5230 iPhone\uFF1ADevice is not connected.",
+      "transport": {
+        "active": "none",
+        "degraded": false,
+        "online": false,
+        "lastSeenAt": null,
+        "detail": null
+      }
+    },
+    {
+      "id": "android",
+      "platform": "android",
+      "model": null,
+      "displayName": "\u672A\u77E5\u673A\u578B",
+      "batteryLevel": null,
+      "isCharging": null,
+      "mediaTitle": null,
+      "mediaArtist": null,
+      "mediaState": "unknown",
+      "foregroundApp": null,
+      "foregroundAppName": null,
+      "updatedAt": 1793504032,
+      "error": "ADB not found. Install Android Platform Tools and add adb to PATH.",
+      "transport": {
+        "active": "none",
+        "degraded": false,
+        "online": false,
+        "lastSeenAt": null,
+        "detail": null
+      }
+    },
+    {
+      "id": "nekotrak",
+      "platform": "windows",
+      "model": "NekoTrak 1.2.0",
+      "displayName": "NekoTrak 1.2.0",
+      "batteryLevel": null,
+      "isCharging": null,
+      "mediaTitle": null,
+      "mediaArtist": null,
+      "mediaState": "unknown",
+      "foregroundApp": "msedge.exe",
+      "foregroundAppName": null,
+      "updatedAt": 1793504032,
+      "error": null,
+      "transport": {
+        "active": "process",
+        "degraded": false,
+        "online": true,
+        "lastSeenAt": 1793504032,
+        "detail": "nekotrak"
+      },
+      "nekotrak": {
+        "version": "1.2.0",
+        "source": "L1",
+        "uptimeSec": 6351,
+        "startedAt": "2026-11-01T09:48:00.680\u002B08:00",
+        "lastLogAt": "2026-11-01T09:48:03.753\u002B08:00",
+        "trackerActive": true,
+        "trackerStartedAt": "2026-11-01T09:48:04.000\u002B08:00",
+        "trackerStoppedAt": "2026-11-01T02:15:27.000\u002B08:00",
+        "currentGame": null,
+        "currentGameAppId": null,
+        "pet": {
+          "name": "\u795E\u693F\u5E02\u7206\u5934\u738B",
+          "lastEvent": {
+            "at": "2026-10-30T18:44:58.682\u002B08:00",
+            "category": "fight",
+            "categoryLabel": "\u5BF9\u6218",
+            "summary": "\u795E\u693F\u5E02\u7206\u5934\u738B \u4E0E \u5E72\u561B\u54DF2333 \u5BF9\u6218 8 \u56DE\u5408 \u00B7 \u795E\u693F\u5E02\u7206\u5934\u738B \u83B7\u80DC",
+            "moodDelta": -3.0,
+            "experience": 3,
+            "textKey": "fight_v09"
+          },
+          "emoji": "\u2694\uFE0F\uD83D\uDE3E",
+          "eventCount": 46
+        },
+        "pomodoro": null,
+        "warns": []
+      }
+    }
+  ]
+}

@@ -34,14 +34,17 @@ MAC:       dc:da:0c:xx:xx:xx
 Display:   SSD1315 128×64, I2C, SSD1306 兼容指令集
 ```
 
-接线（默认值，可在 `idf.py menuconfig` → StatusCast ESP32 里改）：
+接线（板子原理图 `ESP32-S3-COREBOARD` 确认，模块 4 针丝印顺序为 `GND / VCC / SCL / SDA`）：
 
-| 屏幕 | ESP32-S3 |
-| --- | --- |
-| VCC | 3V3 |
-| GND | GND |
-| SDA | GPIO8 |
-| SCL | GPIO9 |
+| 屏幕针脚 | ESP32-S3 引脚 | 板子位置 |
+| --- | --- | --- |
+| GND | GND | J1 的 GND（或 J2 的 GND） |
+| VCC | **3V3** | **J1 pin 1** |
+| SCL | **GPIO9** | **J1 pin 14** |
+| SDA | **GPIO8** | **J1 pin 11** |
+
+> 不要接 5V：模块逻辑电平会跟着 VCC 走，5V 上拉对 ESP32 不安全。板载 WS2812 的数据脚是
+> **GPIO48**（本版未驱动，留作状态灯）。
 
 > 地址 `0x3C`，驱动会自动探测 `0x3D`。屏不是硬依赖：初始化失败只打日志，采集与 HTTP 照常。
 
@@ -117,8 +120,21 @@ idf.py -p COM3 -b 460800 flash monitor
 | `net status` | 打印连接状态 / IP / RSSI |
 | `heap` | 打印空闲堆与最小水位 |
 | `reboot` | 软重启 |
+| `net scan` | 扫描 2.4GHz 热点（ESP32-S3 无 5GHz 射频） |
+| `cfg dump` | 打印 LittleFS 里原始的 `config.json` |
+| `ble scan` | 扫描附近 BLE 广播（含地址/RSSI/名称） |
 
 **WiFi 凭据只存 NVS**，不写 LittleFS、不进仓库、不进日志。
+
+首次配网（串口命令行，`COM3` 为例）：
+
+```powershell
+.\tools\serial-command.ps1 -Port COM3 -Lines 'net scan'      # 先确认能看到 2.4G 热点
+.\tools\serial-command.ps1 -Port COM3 -Lines 'net ssid <ssid>','net pass <password>'
+```
+
+> ESP32-S3 只有 2.4GHz 射频。名字带 `-5g` 的 SSID 不会出现在 `net scan` 里，也无法连接；
+> 请使用路由器的 2.4GHz 同名热点。
 
 ## HTTP API（与 daemon 兼容）
 
@@ -129,6 +145,24 @@ idf.py -p COM3 -b 460800 flash monitor
   `Content-Type: application/json; charset=utf-8`
 - 设备行 13 键顺序固定，加法对象按 `console → node → transport → ble → nekotrak` 追加，
   缺失时整键省略；非 ASCII 一律 `\uXXXX` 转义（PS 5.1 零乱码）
+
+### PC 数据源（iPhone / Android / NekoTrak）
+
+daemon 的 `HttpListener` 只注册 `localhost` / `127.0.0.1`，局域网里的 ESP32 拉不到它。在 daemon
+增加 opt-in LAN 绑定之前，用仓库自带的中继把只读端点转发到局域网：
+
+```powershell
+python .\tools\pc_feed_relay.py --listen-port 5100
+```
+
+然后让 `config.json` 指向它：
+
+```json
+"PcFeed": {"enabled": true, "url": "http://<PC-IP>:5100/status/", "timeoutSeconds": 5}
+```
+
+中继只转发 `GET /status/` 与 `GET /health`，其余方法返回 405；daemon 停掉时 ESP32 会按
+daemon 的 stale 语义把 PC 条目标成 `读取超时`（电量清空、`transport` 丢弃、`nekotrak` 保留）。
 
 NekoTool 接入：
 

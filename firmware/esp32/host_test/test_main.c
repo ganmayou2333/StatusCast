@@ -14,6 +14,7 @@
 #include "sc_core.h"
 #include "sc_json.h"
 #include "sc_snapshot.h"
+#include "sc_wire_parse.h"
 
 static int g_checks;
 static int g_failures;
@@ -514,6 +515,182 @@ static void test_contract_key_order(void)
 #endif
 }
 
+/* ---------------------------------------------------------------- fixtures */
+
+static char *read_file(const char *path, size_t *out_len)
+{
+    FILE *handle = fopen(path, "rb");
+    if (handle == NULL) {
+        return NULL;
+    }
+    (void)fseek(handle, 0, SEEK_END);
+    long size = ftell(handle);
+    (void)fseek(handle, 0, SEEK_SET);
+    if (size <= 0) {
+        fclose(handle);
+        return NULL;
+    }
+    char *text = (char *)malloc((size_t)size + 1);
+    if (text == NULL) {
+        fclose(handle);
+        return NULL;
+    }
+    size_t read = fread(text, 1, (size_t)size, handle);
+    fclose(handle);
+    text[read] = '\0';
+    if (out_len != NULL) {
+        *out_len = read;
+    }
+    return text;
+}
+
+/* Order-insensitive semantic equality: keys may differ in order, numbers compare
+ * by value (the daemon's pet block contains -3.0 which we re-print as -3). */
+static bool json_equal(const cJSON *left, const cJSON *right)
+{
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+    if (cJSON_IsObject(left) && cJSON_IsObject(right)) {
+        int left_count = 0;
+        for (const cJSON *item = left->child; item != NULL; item = item->next) {
+            left_count += 1;
+            const cJSON *other = cJSON_GetObjectItemCaseSensitive(right, item->string);
+            if (other == NULL || !json_equal(item, other)) {
+                return false;
+            }
+        }
+        int right_count = 0;
+        for (const cJSON *item = right->child; item != NULL; item = item->next) {
+            right_count += 1;
+        }
+        return left_count == right_count;
+    }
+    if (cJSON_IsArray(left) && cJSON_IsArray(right)) {
+        if (cJSON_GetArraySize(left) != cJSON_GetArraySize(right)) {
+            return false;
+        }
+        for (int i = 0; i < cJSON_GetArraySize(left); ++i) {
+            if (!json_equal(cJSON_GetArrayItem(left, i), cJSON_GetArrayItem(right, i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (cJSON_IsNumber(left) && cJSON_IsNumber(right)) {
+        return left->valuedouble == right->valuedouble;
+    }
+    if (cJSON_IsString(left) && cJSON_IsString(right)) {
+        return strcmp(left->valuestring, right->valuestring) == 0;
+    }
+    if (cJSON_IsBool(left) && cJSON_IsBool(right)) {
+        return cJSON_IsTrue(left) == cJSON_IsTrue(right);
+    }
+    return cJSON_IsNull(left) && cJSON_IsNull(right);
+}
+
+/* Round-trip a real daemon snapshot through parse -> render and require the
+ * semantic content to survive. This is the regression net for additive blocks. */
+static void test_daemon_fixture_roundtrip(void)
+{
+#ifdef SC_FIXTURE_DIR
+    size_t length = 0;
+    char *text = read_file(SC_FIXTURE_DIR "/daemon_status.json", &length);
+    if (text == NULL) {
+        printf("SKIP daemon fixture test: not found\n");
+        return;
+    }
+
+    sc_alias_table_t aliases;
+    sc_alias_table_init(&aliases);
+    sc_device_t rows[SC_MAX_DEVICES];
+    int count = sc_wire_parse_devices(text, length, &aliases, rows, SC_MAX_DEVICES);
+    CHECK(count == 3);
+    if (count != 3) {
+        free(text);
+        return;
+    }
+
+    CHECK_STR(rows[0].id.v, "iphone");
+    CHECK_STR(rows[0].platform.v, "ios");
+    CHECK(rows[0].error.has);
+    CHECK(strstr(rows[0].error.v, "iPhone") != NULL);
+    CHECK(rows[0].has_transport);
+    CHECK_STR(rows[0].transport.active.v, "none");
+    CHECK(!rows[0].has_nekotrak);
+
+    CHECK_STR(rows[2].id.v, "nekotrak");
+    CHECK_STR(rows[2].platform.v, "windows");
+    CHECK_STR(rows[2].model.v, "NekoTrak 1.2.0");
+    CHECK_STR(rows[2].foreground_app.v, "msedge.exe");
+    CHECK(!rows[2].error.has);
+    CHECK(rows[2].has_transport);
+    CHECK_STR(rows[2].transport.active.v, "process");
+    CHECK_STR(rows[2].transport.detail.v, "nekotrak");
+    CHECK(rows[2].has_nekotrak);
+    CHECK_STR(rows[2].nekotrak.version.v, "1.2.0");
+    CHECK_STR(rows[2].nekotrak.source.v, "L1");
+    CHECK(rows[2].nekotrak.uptime_sec.has && rows[2].nekotrak.uptime_sec.v == 6351);
+    /* ISO strings, NOT epoch seconds -- the type bug this fixture caught. */
+    CHECK_STR(rows[2].nekotrak.started_at.v, "2026-11-01T09:48:00.680+08:00");
+    CHECK_STR(rows[2].nekotrak.last_log_at.v, "2026-11-01T09:48:03.753+08:00");
+    CHECK(rows[2].nekotrak.tracker_active.has && rows[2].nekotrak.tracker_active.v);
+    CHECK_STR(rows[2].nekotrak.tracker_stopped_at.v, "2026-11-01T02:15:27.000+08:00");
+    CHECK(!rows[2].nekotrak.current_game.has);
+    CHECK(!rows[2].nekotrak.current_game_app_id.has);
+    CHECK(rows[2].nekotrak.has_pet);
+    CHECK(!rows[2].nekotrak.has_pomodoro);
+    CHECK(rows[2].nekotrak.warns.count == 0);
+
+    /* Render the parsed rows and compare each device semantically with the
+     * fixture (key order and whitespace do not matter, values must match). */
+    sc_snapshot_t snapshot;
+    sc_snapshot_init(&snapshot);
+    snapshot.generated_at = 1793504032;
+    for (int i = 0; i < count; ++i) {
+        snapshot.devices[i] = rows[i];
+    }
+    snapshot.count = count;
+
+    char buf[8192];
+    size_t rendered_len = sc_snapshot_render(&snapshot, buf, sizeof(buf));
+    CHECK(rendered_len > 0);
+    cJSON *rendered = cJSON_ParseWithLength(buf, rendered_len);
+    cJSON *source = cJSON_ParseWithLength(text, length);
+    CHECK(rendered != NULL && source != NULL);
+    if (rendered != NULL && source != NULL) {
+        cJSON *rendered_rows = cJSON_GetObjectItemCaseSensitive(rendered, "devices");
+        cJSON *source_rows = cJSON_GetObjectItemCaseSensitive(source, "devices");
+        CHECK(cJSON_GetArraySize(rendered_rows) == cJSON_GetArraySize(source_rows));
+        for (int i = 0; i < cJSON_GetArraySize(source_rows); ++i) {
+            CHECK(json_equal(cJSON_GetArrayItem(source_rows, i),
+                             cJSON_GetArrayItem(rendered_rows, i)));
+        }
+    }
+    if (rendered != NULL) {
+        cJSON_Delete(rendered);
+    }
+    if (source != NULL) {
+        cJSON_Delete(source);
+    }
+
+    /* Stale path must keep the additive blocks that describe identity and drop
+     * the per-round ones (transport), exactly like StatusCoordinator. */
+    sc_device_t stale = rows[2];
+    sc_device_mark_stale(&stale, SC_STALE_ERROR_TEXT);
+    CHECK_STR(stale.error.v, SC_STALE_ERROR_TEXT);
+    CHECK(!stale.has_transport);
+    CHECK(stale.has_nekotrak);
+    CHECK_STR(stale.nekotrak.version.v, "1.2.0");
+    CHECK(!stale.battery_level.has);
+    CHECK(!stale.media_title.has);
+
+    free(text);
+#else
+    printf("SKIP daemon fixture test: SC_FIXTURE_DIR not defined\n");
+#endif
+}
+
 int main(void)
 {
     test_json_escape();
@@ -527,6 +704,7 @@ int main(void)
     test_config_defaults_and_parse();
     test_config_bad_input();
     test_contract_key_order();
+    test_daemon_fixture_roundtrip();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

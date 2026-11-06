@@ -27,6 +27,16 @@ static bool s_driver_started;
 static volatile bool s_connected;
 static volatile int s_rssi;
 static volatile bool s_sntp_started;
+static volatile bool s_mdns_started;
+typedef enum {
+    NET_EVT_NONE = 0,
+    NET_EVT_DOWN,
+    NET_EVT_UP,
+    NET_EVT_RETRY,
+} net_event_t;
+
+static volatile net_event_t s_pending_event;
+static TaskHandle_t s_net_task;
 static char s_ip[16];
 static char s_ssid[64];
 static char s_password[64];
@@ -46,16 +56,16 @@ static void refresh_rssi(void)
     }
 }
 
+/* The timer service task has a small stack, so this only queues the retry. */
 static void retry_timer_cb(TimerHandle_t timer)
 {
     (void)timer;
     if (!s_driver_started) {
         return;
     }
-    ESP_LOGI(TAG, "reconnecting (attempt %d)", s_retry_count);
-    esp_err_t err = esp_wifi_connect();
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "esp_wifi_connect: %s", esp_err_to_name(err));
+    s_pending_event = NET_EVT_RETRY;
+    if (s_net_task != NULL) {
+        (void)xTaskNotifyGive(s_net_task);
     }
 }
 
@@ -115,7 +125,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         s_connected = false;
         s_ip[0] = '\0';
         s_rssi = 0;
-        notify();
+        s_pending_event = NET_EVT_DOWN;
+        if (s_net_task != NULL) {
+            (void)xTaskNotifyGive(s_net_task);
+        }
         schedule_retry();
         return;
     }
@@ -129,12 +142,50 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
             (void)xTimerStop(s_retry_timer, 0);
         }
         refresh_rssi();
-        ESP_LOGI(TAG, "got ip %s (rssi %d)", s_ip, s_rssi);
-        if (!s_sntp_started) {
-            start_sntp();
-            s_sntp_started = true;
+        s_pending_event = NET_EVT_UP;
+        if (s_net_task != NULL) {
+            (void)xTaskNotifyGive(s_net_task);
         }
-        notify();
+    }
+}
+
+/* WiFi/IP events run in the small sys_evt task, so the handler above only
+ * records state. Logging, SNTP and mDNS happen here instead. */
+static void net_task(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        net_event_t event = s_pending_event;
+        s_pending_event = NET_EVT_NONE;
+        switch (event) {
+        case NET_EVT_UP:
+            ESP_LOGI(TAG, "got ip %s (rssi %d)", s_ip, s_rssi);
+            if (!s_sntp_started) {
+                start_sntp();
+                s_sntp_started = true;
+            }
+            if (!s_mdns_started) {
+                (void)wifi_start_mdns();
+                s_mdns_started = true;
+            }
+            notify();
+            break;
+        case NET_EVT_DOWN:
+            ESP_LOGW(TAG, "network down");
+            notify();
+            break;
+        case NET_EVT_RETRY: {
+            ESP_LOGI(TAG, "reconnecting (attempt %d)", s_retry_count);
+            esp_err_t err = esp_wifi_connect();
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "esp_wifi_connect: %s", esp_err_to_name(err));
+            }
+            break;
+        }
+        default:
+            break;
+        }
     }
 }
 
@@ -163,6 +214,10 @@ esp_err_t wifi_init(void)
     if (s_retry_timer == NULL) {
         s_retry_timer = xTimerCreate("sc_wifi_retry", pdMS_TO_TICKS(1000), pdFALSE, NULL,
                                      retry_timer_cb);
+    }
+
+    if (s_net_task == NULL) {
+        (void)xTaskCreate(net_task, "sc_net_evt", 4096, NULL, 4, &s_net_task);
     }
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -245,6 +300,55 @@ esp_err_t wifi_reconnect(const char *ssid, const char *password)
     }
     (void)esp_wifi_disconnect();
     return esp_wifi_connect();
+}
+
+int wifi_scan(wifi_ap_info_t *out, int max)
+{
+    if (out == NULL || max <= 0) {
+        return -1;
+    }
+    if (wifi_init() != ESP_OK) {
+        return -1;
+    }
+    if (!s_driver_started) {
+        /* Scanning needs the driver; it does not need credentials. */
+        s_ssid[0] = '\0';
+        s_password[0] = '\0';
+        esp_err_t start_err = esp_wifi_start();
+        if (start_err != ESP_OK) {
+            ESP_LOGW(TAG, "esp_wifi_start for scan: %s", esp_err_to_name(start_err));
+            return -1;
+        }
+        s_driver_started = true;
+    }
+
+    wifi_scan_config_t config = {0};
+    esp_err_t err = esp_wifi_scan_start(&config, true);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_wifi_scan_start: %s", esp_err_to_name(err));
+        return -1;
+    }
+
+    uint16_t count = (uint16_t)(max > 32 ? 32 : max);
+    /* Static: wifi_ap_record_t is ~150 bytes, so a 32-entry array would blow a
+     * task stack. Guarded by the fact that only the console task scans. */
+    static wifi_ap_record_t records[32];
+    err = esp_wifi_scan_get_ap_records(&count, records);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_wifi_scan_get_ap_records: %s", esp_err_to_name(err));
+        return -1;
+    }
+
+    int written = 0;
+    for (uint16_t i = 0; i < count && written < max; ++i) {
+        (void)snprintf(out[written].ssid, sizeof(out[written].ssid), "%s",
+                       (const char *)records[i].ssid);
+        out[written].rssi = records[i].rssi;
+        out[written].channel = records[i].primary;
+        out[written].secured = records[i].authmode != WIFI_AUTH_OPEN;
+        written += 1;
+    }
+    return written;
 }
 
 esp_err_t wifi_start_mdns(void)

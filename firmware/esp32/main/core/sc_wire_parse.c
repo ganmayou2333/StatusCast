@@ -163,11 +163,11 @@ static void parse_nekotrak(const cJSON *object, sc_nekotrak_block_t *block)
     take_str(object, "version", &block->version);
     take_str(object, "source", &block->source);
     take_i64(object, "uptimeSec", &block->uptime_sec);
-    take_i64(object, "startedAt", &block->started_at);
-    take_i64(object, "lastLogAt", &block->last_log_at);
+    take_str(object, "startedAt", &block->started_at);
+    take_str(object, "lastLogAt", &block->last_log_at);
     take_bool(object, "trackerActive", &block->tracker_active);
-    take_i64(object, "trackerStartedAt", &block->tracker_started_at);
-    take_i64(object, "trackerStoppedAt", &block->tracker_stopped_at);
+    take_str(object, "trackerStartedAt", &block->tracker_started_at);
+    take_str(object, "trackerStoppedAt", &block->tracker_stopped_at);
     take_str(object, "currentGame", &block->current_game);
     take_i32(object, "currentGameAppId", &block->current_game_app_id);
     take_raw_object(object, "pet", &block->has_pet, block->pet_json, sizeof(block->pet_json));

@@ -25,7 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `heap` / `reboot`。
 - 真机已确认：芯片/Flash/PSRAM 识别、LittleFS 挂载、HTTP 监听 `0.0.0.0:5099`、NimBLE 初始化、
   30 秒轮询与快照渲染、配置写入与别名生效。
-- 待验证：WiFi 联网后的 LAN 探测与 NekoTool 对拉、BLE 真机扫描、屏幕（尚未接线）。
+- 真机端到端已验证（2026-11-06，COM3）：WiFi 2.4G 接入并拿到 `192.168.1.100`（5G SSID 不可见属硬件限制）、
+  `GET /status/` 与 `GET /health` 在局域网逐字节符合契约、404/405 精确、网关探测 `online:true` +
+  `method:"ping"`、不可达主机两轮后 `statusText` 走 `offlineText`、BLE 扫描 16 台设备并能连接、
+  经 `tools/pc_feed_relay.py` 合并 PC 的 iphone/android/nekotrak（含 `currentGame` 与 `pet` 透传）、
+  停 daemon 后按 daemon 语义降级为 `读取超时`、NekoTool `ultimate_status.ps1` 输出
+  `🎮 Home Router 在线 | 🎮 Ghost 已关机 | 📶 Mijia Scale 已连接`。
+- 待验证：屏幕（用户尚未接线）；心率带通知读取。
 
 
 ### Added

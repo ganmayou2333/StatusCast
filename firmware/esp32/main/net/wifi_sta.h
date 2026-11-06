@@ -26,6 +26,17 @@ esp_err_t wifi_init(void);
  * Calls wifi_init() first when needed. */
 esp_err_t wifi_start(const char *ssid, const char *password, wifi_state_cb_t callback, void *user);
 
+typedef struct {
+    char ssid[33];
+    int8_t rssi;
+    uint8_t channel;
+    bool secured;
+} wifi_ap_info_t;
+
+/* Blocking scan (2.4 GHz only -- the ESP32-S3 radio has no 5 GHz support).
+ * Starts the driver if it is not running yet. Returns the number of APs or -1. */
+int wifi_scan(wifi_ap_info_t *out, int max);
+
 bool wifi_is_connected(void);
 int wifi_rssi(void);
 /* Current IPv4 address as a string, or "" when not connected. */

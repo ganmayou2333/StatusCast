@@ -34,13 +34,6 @@ static void network_changed(bool connected, const char *ip, int rssi, void *user
     app_state_set_network(connected, ip, rssi, "statuscast");
     ESP_LOGI(TAG, "network %s ip=%s rssi=%d", connected ? "up" : "down", ip != NULL ? ip : "-",
              rssi);
-    if (connected) {
-        static bool mdns_started;
-        if (!mdns_started) {
-            (void)wifi_start_mdns();
-            mdns_started = true;
-        }
-    }
 }
 
 /* Config errors become schema-3 error rows, exactly like the Python dispatcher:
