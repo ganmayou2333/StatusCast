@@ -53,6 +53,8 @@ static int64_t s_last_poll_us;
 static int64_t s_last_switch_us;
 static int64_t s_last_generated;
 static bool s_have_model;
+static app_sensor_t s_sensor;
+static app_sensor_t s_last_sensor;
 
 /* --------------------------------------------------------------- helpers */
 
@@ -66,8 +68,13 @@ static int page_count(const sc_display_model_t *model)
         devices = SC_DISPLAY_ROWS;
     }
     /* Overview page plus one page per device; with no devices a single
-     * "no devices" page takes the place of the per-device pages. */
-    return 1 + (devices > 0 ? devices : 1);
+     * "no devices" page takes the place of the per-device pages. A working
+     * DHT20 adds one more page at the end. */
+    int pages = 1 + (devices > 0 ? devices : 1);
+    if (s_sensor.ok) {
+        pages += 1;
+    }
+    return pages;
 }
 
 static bool model_equal(const sc_display_model_t *left, const sc_display_model_t *right)
@@ -95,8 +102,13 @@ static bool poll_state(void)
 {
     (void)app_state_copy_display(&s_next_model);
     int64_t generated = app_state_generated_at();
+    s_sensor = app_state_sensor();
+    bool sensor_changed = s_sensor.ok != s_last_sensor.ok ||
+                          (s_sensor.ok && (s_sensor.temperature_c != s_last_sensor.temperature_c ||
+                                           s_sensor.humidity_pct != s_last_sensor.humidity_pct));
+    s_last_sensor = s_sensor;
     bool changed = !s_have_model || generated != s_last_generated ||
-                   !model_equal(&s_next_model, &s_model);
+                   !model_equal(&s_next_model, &s_model) || sensor_changed;
     s_model = s_next_model;
     s_last_generated = generated;
     s_have_model = true;
@@ -162,6 +174,29 @@ static void draw_overview(const sc_display_model_t *model)
         (void)snprintf(line, sizeof(line), "up %dd %02d:%02d", days, hours, minutes);
     }
     ssd1315_draw_text(0, 3, line, false);
+
+    if (s_sensor.ok) {
+        (void)snprintf(line, sizeof(line), "T %.1fC H %.0f%%", s_sensor.temperature_c,
+                       s_sensor.humidity_pct);
+        ssd1315_draw_text(0, 4, line, false);
+    }
+}
+
+static void draw_sensor_page(const sc_display_model_t *model)
+{
+    char line[32];
+    int pages = page_count(model);
+
+    ssd1315_draw_text_large(0, 0, "DHT20");
+    (void)snprintf(line, sizeof(line), "%.1f C", s_sensor.temperature_c);
+    ssd1315_draw_text(0, 2, line, false);
+    (void)snprintf(line, sizeof(line), "%.1f %%RH", s_sensor.humidity_pct);
+    ssd1315_draw_text(0, 3, line, false);
+    ssd1315_draw_text(0, 4, "indoor", false);
+
+    (void)snprintf(line, sizeof(line), "%d/%d", pages, pages);
+    int width = (int)strlen(line) * 6;
+    ssd1315_draw_text(width < UI_PANEL_WIDTH ? UI_PANEL_WIDTH - width : 0, 7, line, true);
 }
 
 static void draw_device_page(const sc_display_model_t *model, int page)
@@ -210,10 +245,13 @@ static void draw_device_page(const sc_display_model_t *model, int page)
 static void redraw(int page, const sc_display_model_t *model)
 {
     ssd1315_clear();
+    int device_pages = model->row_count > 0 ? model->row_count : 1;
     if (page <= 0) {
         draw_overview(model);
-    } else {
+    } else if (page <= device_pages) {
         draw_device_page(model, page);
+    } else {
+        draw_sensor_page(model);
     }
     ssd1315_flush();
 }
