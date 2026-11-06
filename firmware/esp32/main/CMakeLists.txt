@@ -14,6 +14,10 @@ idf_component_register(
         "core/sc_json.c"
         "core/sc_snapshot.c"
         "core/sc_wire_parse.c"
+        "control/audit.c"
+        "control/config_guard.c"
+        "control/control_api.c"
+        "control/log_ring.c"
         "collectors/ble_collector.c"
         "collectors/lan_collector.c"
         "collectors/pc_bridge.c"
@@ -34,6 +38,7 @@ idf_component_register(
         "collectors"
         "storage"
         "console"
+        "control"
         "sensors"
         "ui"
     REQUIRES
@@ -48,4 +53,7 @@ idf_component_register(
         nvs_flash
         bt
         json
+        mbedtls
+        esp_partition
+        espcoredump
 )

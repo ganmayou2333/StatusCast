@@ -35,6 +35,14 @@ menu "StatusCast ESP32"
         bool "Enable the PC daemon bridge when config.json has no PcFeed block"
         default n
 
+    config SC_CONTROL_TOKEN
+        string "Shared token for the /control/ endpoints"
+        default "statuscast"
+        help
+            Windows calls POST /control/... with this value in the
+            X-StatusCast-Token header. Change it (Kconfig or POST
+            /control/token) before exposing the board outside a trusted LAN.
+
     config SC_MAX_SNAPSHOT_JSON
         int "Snapshot JSON buffer size in bytes"
         default 8192

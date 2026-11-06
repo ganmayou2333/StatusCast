@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "sc_store";
 
@@ -224,6 +225,44 @@ bool state_save_ble_last_seen(int index, int64_t value)
     char key[16];
     (void)snprintf(key, sizeof(key), "b%d_seen", index);
     (void)nvs_set_i64(handle, key, value);
+    esp_err_t err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+const char *control_token_load(char *buffer, size_t cap)
+{
+    if (buffer == NULL || cap == 0) {
+        return "";
+    }
+    buffer[0] = '\0';
+    nvs_handle_t handle;
+    if (nvs_open_state(NVS_READONLY, &handle)) {
+        size_t length = cap;
+        if (nvs_get_str(handle, "ctl_token", buffer, &length) == ESP_OK && buffer[0] != '\0') {
+            nvs_close(handle);
+            return buffer;
+        }
+        nvs_close(handle);
+    }
+#ifdef CONFIG_SC_CONTROL_TOKEN
+    (void)snprintf(buffer, cap, "%s", CONFIG_SC_CONTROL_TOKEN);
+#else
+    (void)snprintf(buffer, cap, "%s", "statuscast");
+#endif
+    return buffer;
+}
+
+bool control_token_save(const char *token)
+{
+    if (token == NULL || token[0] == '\0') {
+        return false;
+    }
+    nvs_handle_t handle;
+    if (!nvs_open_state(NVS_READWRITE, &handle)) {
+        return false;
+    }
+    (void)nvs_set_str(handle, "ctl_token", token);
     esp_err_t err = nvs_commit(handle);
     nvs_close(handle);
     return err == ESP_OK;

@@ -49,5 +49,10 @@ bool state_save_console(int index, const sc_persist_state_t *state);
 bool state_load_ble_last_seen(int index, int64_t *out);
 bool state_save_ble_last_seen(int index, int64_t value);
 
+/* Control token for /control/...; falls back to the Kconfig default when NVS is
+ * empty. Returns a NUL-terminated string (never NULL). */
+const char *control_token_load(char *buffer, size_t cap);
+bool control_token_save(const char *token);
+
 bool wifi_creds_load(char *ssid, size_t ssid_cap, char *password, size_t password_cap);
 bool wifi_creds_save(const char *ssid, const char *password);

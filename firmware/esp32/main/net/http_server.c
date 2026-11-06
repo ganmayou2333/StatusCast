@@ -9,6 +9,7 @@
 
 #include "app_state.h"
 #include "ui/status_led.h"
+#include "control/control_api.h"
 
 static const char *TAG = "sc_http";
 
@@ -154,7 +155,17 @@ esp_err_t http_server_start(uint16_t port)
         return err;
     }
 
-    for (size_t i = 0; i < sizeof(s_routes) / sizeof(s_routes[0]); ++i) {
+    /* Exact routes first, then the authenticated control API, and only then the
+     * catch-all wildcard handlers: httpd matches handlers in registration order. */
+    const size_t specific_routes = 3;
+    for (size_t i = 0; i < specific_routes; ++i) {
+        err = httpd_register_uri_handler(s_server, &s_routes[i]);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "register %s: %s", s_routes[i].uri, esp_err_to_name(err));
+        }
+    }
+    (void)control_api_register(s_server);
+    for (size_t i = specific_routes; i < sizeof(s_routes) / sizeof(s_routes[0]); ++i) {
         err = httpd_register_uri_handler(s_server, &s_routes[i]);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "register %s: %s", s_routes[i].uri, esp_err_to_name(err));

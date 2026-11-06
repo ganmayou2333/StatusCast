@@ -11,6 +11,8 @@
  */
 #pragma once
 
+#include <stdbool.h>
+
 typedef enum {
     STATUS_LED_OFF = 0,
     STATUS_LED_OK,
@@ -19,6 +21,10 @@ typedef enum {
 } status_led_state_t;
 
 void status_led_init(void);
+/* Manual override from /control/led; disable with `enabled = false` so the
+ * automatic state machine takes over again on the next round. */
+void status_led_set_manual(bool enabled, unsigned red, unsigned green, unsigned blue);
+bool status_led_manual_active(void);
 void status_led_set(status_led_state_t state);
 status_led_state_t status_led_get(void);
 const char *status_led_name(status_led_state_t state);

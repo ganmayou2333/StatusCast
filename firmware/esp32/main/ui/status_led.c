@@ -10,6 +10,7 @@ static const char *TAG = "sc_led";
 
 static led_strip_handle_t s_strip;
 static status_led_state_t s_state;
+static bool s_manual;
 
 void status_led_init(void)
 {
@@ -39,9 +40,28 @@ void status_led_init(void)
     s_state = STATUS_LED_OFF;
 }
 
+void status_led_set_manual(bool enabled, unsigned red, unsigned green, unsigned blue)
+{
+    s_manual = enabled;
+    if (s_strip == NULL) {
+        return;
+    }
+    if (!enabled) {
+        return;
+    }
+    (void)led_strip_set_pixel(s_strip, 0, red, green, blue);
+    (void)led_strip_refresh(s_strip);
+    s_state = STATUS_LED_OFF;
+}
+
+bool status_led_manual_active(void)
+{
+    return s_manual;
+}
+
 void status_led_set(status_led_state_t state)
 {
-    if (s_strip == NULL || state == s_state) {
+    if (s_strip == NULL || state == s_state || s_manual) {
         return;
     }
     uint8_t red = 0;

@@ -9,6 +9,9 @@
 #include "sdkconfig.h"
 
 #include "app_state.h"
+#include "control/audit.h"
+#include "control/config_guard.h"
+#include "control/log_ring.h"
 #include "collectors/ble_collector.h"
 #include "collectors/lan_collector.h"
 #include "collectors/pc_bridge.h"
@@ -129,6 +132,7 @@ static void run_round(void)
         ESP_LOGE(TAG, "publish failed");
         return;
     }
+    config_guard_note_publish();
 
     /* Optional sensor on the panel bus: read it every round so a wired DHT20 is
      * visible in the logs even before it gets a place in the JSON contract. */
@@ -144,6 +148,7 @@ static void run_round(void)
     app_state_note_round(s_snapshot->count, elapsed);
 
     status_led_set(compute_led_state(s_snapshot));
+    config_guard_poll();
     ESP_LOGI(TAG, "round: %d device(s), %u bytes, %u ms", s_snapshot->count, (unsigned)length,
              (unsigned)elapsed);
 }
@@ -170,6 +175,9 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
+    log_ring_init();
+    audit_init();
+
     s_json_capacity = (size_t)CONFIG_SC_MAX_SNAPSHOT_JSON;
     s_snapshot = (sc_snapshot_t *)sc_psram_alloc(sizeof(sc_snapshot_t));
     s_json = (char *)sc_psram_alloc(s_json_capacity);
@@ -181,6 +189,9 @@ void app_main(void)
 
     app_state_init();
     if (config_store_init() == ESP_OK) {
+        /* Rolling back a config that never produced a snapshot must happen
+         * before the first round reads the config. */
+        config_guard_init();
         (void)app_config_reload();
     } else {
         ESP_LOGW(TAG, "config store unavailable; defaults only (no persistence)");
