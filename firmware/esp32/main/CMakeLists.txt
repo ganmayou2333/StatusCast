@@ -19,6 +19,7 @@ idf_component_register(
         "collectors/pc_bridge.c"
         "net/http_server.c"
         "net/wifi_sta.c"
+        "sensors/dht20.c"
         "storage/config_store.c"
         "console/serial_console.c"
         "ui/font6x8.c"
@@ -32,6 +33,7 @@ idf_component_register(
         "collectors"
         "storage"
         "console"
+        "sensors"
         "ui"
     REQUIRES
         esp_http_server

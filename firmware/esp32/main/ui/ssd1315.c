@@ -103,7 +103,10 @@ int ssd1315_i2c_scan(uint8_t *addrs, int max)
     }
     int found = 0;
     for (uint16_t address = 0x08; address <= 0x77 && found < max; ++address) {
-        if (i2c_master_probe(s_bus, address, 20) == ESP_OK) {
+        /* Probe twice: a floating bus with long jumper wires can fake a single
+         * ACK, a real device answers consistently. */
+        if (i2c_master_probe(s_bus, address, 30) == ESP_OK &&
+            i2c_master_probe(s_bus, address, 30) == ESP_OK) {
             addrs[found++] = (uint8_t)address;
         }
     }
@@ -128,6 +131,11 @@ static uint8_t sanitize_char(unsigned char c)
 }
 
 /* ------------------------------------------------------------------- public */
+
+i2c_master_bus_handle_t ssd1315_bus_handle(void)
+{
+    return s_bus;
+}
 
 esp_err_t ssd1315_init(int sda_gpio, int scl_gpio, uint8_t i2c_addr)
 {

@@ -17,7 +17,9 @@
 #include "net/http_server.h"
 #include "net/wifi_sta.h"
 #include "sc_snapshot.h"
+#include "sensors/dht20.h"
 #include "storage/config_store.h"
+#include "ui/ssd1315.h"
 #include "ui/ui.h"
 
 static const char *TAG = "sc_main";
@@ -96,6 +98,16 @@ static void run_round(void)
         return;
     }
 
+    /* Optional sensor on the panel bus: read it every round so a wired DHT20 is
+     * visible in the logs even before it gets a place in the JSON contract. */
+    dht20_reading_t reading;
+    if (dht20_read(&reading) == ESP_OK) {
+        ESP_LOGI(TAG, "dht20: %.1f C  %.1f %%RH", reading.temperature_c, reading.humidity_pct);
+        app_state_set_sensor(true, reading.temperature_c, reading.humidity_pct);
+    } else {
+        app_state_set_sensor(false, 0.0f, 0.0f);
+    }
+
     const uint32_t elapsed = (uint32_t)((xTaskGetTickCount() - start) * portTICK_PERIOD_MS);
     app_state_note_round(s_snapshot->count, elapsed);
     ESP_LOGI(TAG, "round: %d device(s), %u bytes, %u ms", s_snapshot->count, (unsigned)length,
@@ -156,6 +168,28 @@ void app_main(void)
     ble_collector_init();
     serial_console_start();
     ui_start();
+
+    /* Log the I2C bus at boot: with the OLED and (optionally) a DHT20 sharing
+     * it, this is the one check that needs no serial writes. The panel bus is
+     * created inside the UI task, so wait for it to come up first. */
+    for (int i = 0; i < 80 && !ssd1315_ready(); ++i) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    uint8_t i2c_addresses[16];
+    int i2c_count = ssd1315_i2c_scan(i2c_addresses, 16);
+    for (int i = 0; i < i2c_count; ++i) {
+        const char *hint = "";
+        if (i2c_addresses[i] == 0x3C || i2c_addresses[i] == 0x3D) {
+            hint = " (OLED)";
+        } else if (i2c_addresses[i] == 0x38) {
+            hint = " (DHT20)";
+        }
+        ESP_LOGI(TAG, "i2c device at 0x%02X%s", (unsigned)i2c_addresses[i], hint);
+    }
+    app_state_set_i2c(i2c_addresses, i2c_count);
+    if (i2c_count == 0) {
+        ESP_LOGW(TAG, "no I2C devices answered on the panel bus");
+    }
 
     xTaskCreatePinnedToCore(scheduler_task, "sc_sched", 8192, NULL, 5, NULL, 1);
 }

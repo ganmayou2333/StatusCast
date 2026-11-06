@@ -54,6 +54,19 @@ int64_t app_state_generated_at(void);
 void app_state_set_network(bool connected, const char *ip, int rssi, const char *hostname);
 app_network_t app_state_network(void);
 
+/* ---- diagnostics: optional sensor + I2C inventory ---- */
+typedef struct {
+    bool ok;
+    float temperature_c;
+    float humidity_pct;
+} app_sensor_t;
+
+void app_state_set_sensor(bool ok, float temperature_c, float humidity_pct);
+app_sensor_t app_state_sensor(void);
+void app_state_set_i2c(const uint8_t *addresses, int count);
+/* Comma separated "0x38,0x3C" list for /diag; empty when nothing answered. */
+const char *app_state_i2c_list(char *out, size_t cap);
+
 /* ---- counters for diagnostics ---- */
 void app_state_note_round(int devices, uint32_t millis);
 uint32_t app_state_last_round_millis(void);

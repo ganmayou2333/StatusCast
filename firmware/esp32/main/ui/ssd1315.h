@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "driver/i2c_master.h"
 #include "esp_err.h"
 
 /* Create the I2C bus, probe `i2c_addr` (falling back to the other of 0x3C /
@@ -44,6 +45,10 @@ void ssd1315_draw_pixel(int x, int y, bool on);
  * entries. Returns the number of devices that answered (0 when the bus was never
  * created). Used by `i2c scan` to verify extra sensors on the shared bus. */
 int ssd1315_i2c_scan(uint8_t *addrs, int max);
+
+/* The I2C bus the panel lives on (NULL before init). Other devices on the same
+ * bus -- e.g. a DHT20 at 0x38 -- use this instead of creating a second bus. */
+i2c_master_bus_handle_t ssd1315_bus_handle(void);
 
 /* Push the framebuffer to the panel. No-op when the panel is not ready. */
 void ssd1315_flush(void);

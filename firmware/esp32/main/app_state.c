@@ -33,6 +33,9 @@ static sc_display_model_t s_display;
 
 static app_network_t s_network;
 static uint32_t s_last_round_ms;
+static app_sensor_t s_sensor;
+static uint8_t s_i2c_addresses[16];
+static int s_i2c_count;
 
 /* Wall clock: valid once SNTP has synced. Anything before 2023-11-14 is
  * treated as "not synced yet" so timestamps never look plausible-but-wrong. */
@@ -244,6 +247,53 @@ app_network_t app_state_network(void)
     app_network_t copy = s_network;
     state_unlock();
     return copy;
+}
+
+void app_state_set_sensor(bool ok, float temperature_c, float humidity_pct)
+{
+    state_lock();
+    s_sensor.ok = ok;
+    s_sensor.temperature_c = temperature_c;
+    s_sensor.humidity_pct = humidity_pct;
+    state_unlock();
+}
+
+app_sensor_t app_state_sensor(void)
+{
+    state_lock();
+    app_sensor_t copy = s_sensor;
+    state_unlock();
+    return copy;
+}
+
+void app_state_set_i2c(const uint8_t *addresses, int count)
+{
+    state_lock();
+    s_i2c_count = 0;
+    for (int i = 0; i < count && i < (int)sizeof(s_i2c_addresses); ++i) {
+        s_i2c_addresses[s_i2c_count++] = addresses[i];
+    }
+    state_unlock();
+}
+
+const char *app_state_i2c_list(char *out, size_t cap)
+{
+    if (out == NULL || cap == 0) {
+        return "";
+    }
+    out[0] = '\\0';
+    state_lock();
+    size_t used = 0;
+    for (int i = 0; i < s_i2c_count; ++i) {
+        int written = snprintf(out + used, cap - used, "%s\"0x%02X\"",
+                               i == 0 ? "" : ",", (unsigned)s_i2c_addresses[i]);
+        if (written <= 0 || (size_t)written >= cap - used) {
+            break;
+        }
+        used += (size_t)written;
+    }
+    state_unlock();
+    return out;
 }
 
 void app_state_note_round(int devices, uint32_t millis)

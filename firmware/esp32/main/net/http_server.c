@@ -72,6 +72,30 @@ static esp_err_t handle_health(httpd_req_t *req)
     return respond(req, "200 OK", body, (size_t)length);
 }
 
+/* Diagnostic-only endpoint (not part of the schema-3 contract): sensor reading,
+ * I2C inventory and timing, so hardware can be checked over WiFi without the
+ * flaky USB-serial bridge. */
+static esp_err_t handle_diag(httpd_req_t *req)
+{
+    char i2c[128];
+    app_sensor_t sensor = app_state_sensor();
+    char body[448];
+    int length = snprintf(body, sizeof(body),
+                          "{\"deviceCount\":%d,\"generatedAt\":%lld,"
+                          "\"roundMillis\":%u,\"i2c\":[%s],"
+                          "\"sensor\":{\"ok\":%s,\"temperatureC\":%.1f,"
+                          "\"humidityPct\":%.1f}}",
+                          app_state_device_count(), (long long)app_state_generated_at(),
+                          (unsigned)app_state_last_round_millis(),
+                          app_state_i2c_list(i2c, sizeof(i2c)),
+                          sensor.ok ? "true" : "false", sensor.temperature_c,
+                          sensor.humidity_pct);
+    if (length <= 0 || (size_t)length >= sizeof(body)) {
+        return respond_literal(req, "503 Service Unavailable", BODY_NOT_READY);
+    }
+    return respond(req, "200 OK", body, (size_t)length);
+}
+
 static esp_err_t handle_not_found(httpd_req_t *req)
 {
     return respond_literal(req, "404 Not Found", BODY_NOT_FOUND);
@@ -97,6 +121,7 @@ static esp_err_t handle_uri_method_not_allowed(httpd_req_t *req, httpd_err_code_
 static const httpd_uri_t s_routes[] = {
     {.uri = "/status/", .method = HTTP_GET, .handler = handle_status, .user_ctx = NULL},
     {.uri = "/health", .method = HTTP_GET, .handler = handle_health, .user_ctx = NULL},
+    {.uri = "/diag", .method = HTTP_GET, .handler = handle_diag, .user_ctx = NULL},
     {.uri = "/*", .method = HTTP_GET, .handler = handle_not_found, .user_ctx = NULL},
     {.uri = "/*", .method = HTTP_POST, .handler = handle_method_not_allowed, .user_ctx = NULL},
     {.uri = "/*", .method = HTTP_PUT, .handler = handle_method_not_allowed, .user_ctx = NULL},
