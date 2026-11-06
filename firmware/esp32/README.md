@@ -67,6 +67,9 @@ Display:   SSD1315 128×64, I2C, SSD1306 兼容指令集
 .\tools\monitor.ps1 -Port COM3
 ```
 
+> 串口号会在重新插拔后变化（本机实测从 COM3 变成 COM4）。以设备管理器里 CH343 的端口为准，
+> 所有命令都接受 `-Port COMx`。
+
 `tools\build.bat` 内部会调用 IDF 的 `export.bat`（并先清掉 `MSYSTEM`，因为 ESP-IDF
 拒绝在 MSYS/Mingw 环境里运行），不污染全局环境。手动等价命令：
 
