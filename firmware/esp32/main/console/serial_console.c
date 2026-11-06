@@ -16,6 +16,7 @@
 #include "sdkconfig.h"
 
 #include "app_state.h"
+#include "collectors/ble_collector.h"
 #include "config_store.h"
 #include "mem_util.h"
 #include "net/wifi_sta.h"
@@ -82,6 +83,31 @@ static int cmd_help(int argc, char **argv);
 static int cmd_cfg(int argc, char **argv);
 static int cmd_net(int argc, char **argv);
 static int cmd_heap(int argc, char **argv);
+/* Lists nearby BLE peripherals so a smart name/address can be put into
+ * config.json without guesswork. Takes one 4 s scan. */
+static int cmd_ble(int argc, char **argv)
+{
+    if (argc < 2 || strcmp(argv[1], "scan") != 0) {
+        con_write("usage: ble scan\r\n");
+        return 1;
+    }
+    static char names[16][32];
+    static char addrs[16][18];
+    static int8_t rssi[16];
+
+    con_write("scanning 4 s ...\r\n");
+    int count = ble_collector_scan_list(16, names, addrs, rssi);
+    if (count <= 0) {
+        con_write("no devices found (or a collection round holds the BLE lock)\r\n");
+        return 1;
+    }
+    con_write("%2s  %-17s %5s  %s\r\n", "#", "address", "rssi", "name");
+    for (int i = 0; i < count; ++i) {
+        con_write("%2d  %-17s %5d  %s\r\n", i, addrs[i], (int)rssi[i], names[i]);
+    }
+    return 0;
+}
+
 /* Dumps the exact bytes /status/ would serve. Lets the wire contract be checked
  * over the serial console before WiFi is provisioned. */
 static int cmd_json(int argc, char **argv)
@@ -109,6 +135,7 @@ static int cmd_json(int argc, char **argv)
 static int cmd_reboot(int argc, char **argv);
 static int cmd_stats(int argc, char **argv);
 static int cmd_json(int argc, char **argv);
+static int cmd_ble(int argc, char **argv);
 
 static const esp_console_cmd_t s_commands[] = {
     {.command = "help", .help = "list commands", .func = cmd_help, .argtable = NULL},
@@ -118,6 +145,8 @@ static const esp_console_cmd_t s_commands[] = {
     {.command = "heap", .help = "show free heap", .func = cmd_heap, .argtable = NULL},
     {.command = "stats", .help = "show runtime counters", .func = cmd_stats, .argtable = NULL},
     {.command = "json", .help = "dump the current /status/ body", .func = cmd_json,
+     .argtable = NULL},
+    {.command = "ble", .help = "ble scan - list nearby BLE peripherals", .func = cmd_ble,
      .argtable = NULL},
     {.command = "reboot", .help = "restart the device", .func = cmd_reboot, .argtable = NULL},
 };

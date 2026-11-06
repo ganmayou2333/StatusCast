@@ -7,7 +7,10 @@
  *   - ble_collector_run() runs on the collector task.  It starts one shared
  *     discovery procedure, lets the host task collect advertisements for
  *     4 seconds, cancels it, and then walks the configured entries in config
- *     order: connect, GATT discovery/read/subscribe, disconnect.
+ *     order: connect, GATT discovery/read/subscribe, disconnect.  The post-scan
+ *     work is bounded by a wall-clock budget so a round stays inside 30 s.
+ *   - ble_collector_scan_list() runs the same 4 s scan for the serial console
+ *     and reports every advertising device it saw (deduplicated by address).
  *
  * Threading model: the collector task owns every "start" call and waits on an
  * event group; the NimBLE host task writes the small result slots and signals
@@ -1232,6 +1235,9 @@ int ble_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t n
                  reading.linked ? 1 : 0, reading.has_battery ? (int)reading.battery : -1,
                  reading.has_heart_rate ? (int)reading.heart_rate : -1);
     }
+    /* A connection attempt that timed out can still complete late; never leave
+     * a link behind when the round ends. */
+    ble_disconnect();
     (void)xSemaphoreGive(s_ble.lock);
     return appended;
 }
