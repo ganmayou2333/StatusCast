@@ -33,6 +33,7 @@
 #include "config_store.h"
 #include "mem_util.h"
 #include "net/wifi_sta.h"
+#include "ui/ssd1315.h"
 
 static const char *TAG = "sc_console";
 
@@ -96,6 +97,27 @@ static int cmd_help(int argc, char **argv);
 static int cmd_cfg(int argc, char **argv);
 static int cmd_net(int argc, char **argv);
 static int cmd_ble(int argc, char **argv);
+static int cmd_i2c(int argc, char **argv);
+static int cmd_i2c(int argc, char **argv)
+{
+    if (argc < 2 || strcmp(argv[1], "scan") != 0) {
+        con_write("usage: i2c scan\r\n");
+        return 1;
+    }
+    static uint8_t addresses[16];
+    int count = ssd1315_i2c_scan(addresses, 16);
+    if (count <= 0) {
+        con_write("no I2C devices answered (panel bus not initialised?)\r\n");
+        return 1;
+    }
+    con_write("found %d device(s):\r\n", count);
+    for (int i = 0; i < count; ++i) {
+        con_write("  0x%02X%s\r\n", (unsigned)addresses[i],
+                  addresses[i] == 0x3C || addresses[i] == 0x3D ? "  (OLED)" : "");
+    }
+    return 0;
+}
+
 static int cmd_json(int argc, char **argv);
 static int cmd_heap(int argc, char **argv);
 static int cmd_stats(int argc, char **argv);
@@ -108,6 +130,8 @@ static const esp_console_cmd_t s_commands[] = {
     {.command = "net", .help = "net ssid <ssid> | net pass <pw> | net scan | net status",
      .func = cmd_net, .argtable = NULL},
     {.command = "ble", .help = "ble scan - list nearby BLE peripherals", .func = cmd_ble,
+     .argtable = NULL},
+    {.command = "i2c", .help = "i2c scan - list devices on the panel bus", .func = cmd_i2c,
      .argtable = NULL},
     {.command = "json", .help = "dump the current /status/ body", .func = cmd_json,
      .argtable = NULL},

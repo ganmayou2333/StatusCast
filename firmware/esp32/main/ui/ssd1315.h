@@ -40,5 +40,10 @@ int ssd1315_draw_text_large(int x, int page, const char *text);
  * ignored. */
 void ssd1315_draw_pixel(int x, int y, bool on);
 
+/* Probe every 7-bit I2C address on the driver's bus and fill up to `max`
+ * entries. Returns the number of devices that answered (0 when the bus was never
+ * created). Used by `i2c scan` to verify extra sensors on the shared bus. */
+int ssd1315_i2c_scan(uint8_t *addrs, int max);
+
 /* Push the framebuffer to the panel. No-op when the panel is not ready. */
 void ssd1315_flush(void);

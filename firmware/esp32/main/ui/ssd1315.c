@@ -93,6 +93,23 @@ static esp_err_t probe_address(uint16_t address)
     return i2c_master_probe(s_bus, address, SSD1315_I2C_TIMEOUT_MS);
 }
 
+/* Probes every 7-bit address on the same bus the panel uses. Used by the
+ * `i2c scan` console command to verify a second device (e.g. a DHT20 at 0x38)
+ * without guessing. */
+int ssd1315_i2c_scan(uint8_t *addrs, int max)
+{
+    if (s_bus == NULL || addrs == NULL || max <= 0) {
+        return 0;
+    }
+    int found = 0;
+    for (uint16_t address = 0x08; address <= 0x77 && found < max; ++address) {
+        if (i2c_master_probe(s_bus, address, 20) == ESP_OK) {
+            addrs[found++] = (uint8_t)address;
+        }
+    }
+    return found;
+}
+
 static void log_failure_once(esp_err_t err, const char *what)
 {
     if (s_failure_logged) {
