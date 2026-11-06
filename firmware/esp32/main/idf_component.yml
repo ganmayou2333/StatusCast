@@ -1,0 +1,7 @@
+dependencies:
+  idf: ">=5.4"
+  # LittleFS for /config.json and the mDNS responder. Only these two are managed
+  # components; everything else (cJSON, NimBLE, esp_http_server, esp_ping via
+  # lwip) ships with ESP-IDF itself.
+  joltwallet/littlefs: ">=1.11.0"
+  espressif/mdns: ">=1.8.0"

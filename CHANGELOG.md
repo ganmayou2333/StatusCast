@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
 
+### Added — ESP32 固件（`firmware/esp32/`，未发布）
+
+- 新增独立状态服务器移植：ESP32-S3（N16R8，16MB Flash / 8MB PSRAM）跑 ESP-IDF 5.5.6，
+  自己探测局域网主机、读取 BLE 外设，并通过 HTTP 拉取 PC daemon 的 `/status/` 补齐
+  iPhone / Android / NekoTrak 条目。
+- 对外提供与 daemon 字节级兼容的 `GET /status/` 与 `GET /health`：端口 5099、schema 3、
+  13 键固定顺序、加法对象按 `console → node → transport → ble → nekotrak` 追加、非 ASCII
+  一律 `\uXXXX` 转义（PS 5.1 零乱码）、404/405/503 精确字节。
+- 契约核心（投影 / 别名 / 转义 / 路由 / 就绪判定 / 迟滞 / 配置解析）抽成不依赖 ESP-IDF 的
+  `main/core/`，host 侧 147 项单测对照 `schema/status-contract.json` 全绿。
+- SSD1315 128×64 单色屏：总览页 + 设备轮播（全 ASCII 字库）；屏缺失时只打日志、业务不受影响。
+- 配置：LittleFS `config.json`（与 PC 侧字段名一致，另有 `PcFeed` 键）+ 编译期默认镜像 +
+  串口 `cfg put` 粘贴模式；WiFi 凭据只进 NVS；串口命令 `cfg` / `net` / `json` / `stats` /
+  `heap` / `reboot`。
+- 真机已确认：芯片/Flash/PSRAM 识别、LittleFS 挂载、HTTP 监听 `0.0.0.0:5099`、NimBLE 初始化、
+  30 秒轮询与快照渲染、配置写入与别名生效。
+- 待验证：WiFi 联网后的 LAN 探测与 NekoTool 对拉、BLE 真机扫描、屏幕（尚未接线）。
+
+
 ### Added
 
 - `collectors/nekotrak_collector.py`: NekoTrak on this PC becomes a device of

@@ -1,0 +1,14 @@
+# StatusCast ESP32 -- 16 MB flash layout (ESP32-S3-DevKitC-1 N16R8, verified with
+# `esptool flash-id`: 16 MB, embedded 8 MB PSRAM).
+#
+# OTA slots are reserved even though v1 only flashes over USB: repartitioning
+# later would require a full reflash anyway, and 5 MB per slot leaves room for
+# the display font + NimBLE + future SSH support.
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xF000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+ota_0,      app,  ota_0,    0x20000,  0x500000,
+ota_1,      app,  ota_1,    0x520000, 0x500000,
+storage,    data, spiffs,   0xA20000, 0x400000,
+coredump,   data, coredump, 0xE20000, 0x10000,

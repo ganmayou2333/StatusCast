@@ -1,0 +1,48 @@
+# StatusCast ESP32 main component.
+#
+# The core/ sources are deliberately ESP-IDF-free: host_test/ compiles the same
+# files with a plain C compiler so the wire contract stays testable without a
+# board. Keep that split when adding files.
+
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "app_state.c"
+        "core/sc_config.c"
+        "core/sc_core.c"
+        "core/sc_display.c"
+        "core/sc_json.c"
+        "core/sc_snapshot.c"
+        "core/sc_wire_parse.c"
+        "collectors/ble_collector.c"
+        "collectors/lan_collector.c"
+        "collectors/pc_bridge.c"
+        "net/http_server.c"
+        "net/wifi_sta.c"
+        "storage/config_store.c"
+        "console/serial_console.c"
+        "ui/font6x8.c"
+        "ui/font8x16.c"
+        "ui/ssd1315.c"
+        "ui/ui.c"
+    INCLUDE_DIRS
+        "."
+        "core"
+        "net"
+        "collectors"
+        "storage"
+        "console"
+        "ui"
+    REQUIRES
+        esp_http_server
+        esp_http_client
+        esp_wifi
+        esp_netif
+        esp_timer
+        esp_driver_i2c
+        esp_driver_uart
+        lwip
+        nvs_flash
+        bt
+        json
+)

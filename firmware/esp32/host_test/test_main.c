@@ -1,0 +1,533 @@
+/*
+ * Host-side unit tests for the IDF-independent contract core.
+ *
+ * These run without a board and without ESP-IDF; see tools/host-test.ps1.
+ * The last section cross-checks the rendered device key order against
+ * schema/status-contract.json, the single source of truth shared with the
+ * Python and C# implementations.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cJSON.h"
+#include "sc_core.h"
+#include "sc_json.h"
+#include "sc_snapshot.h"
+
+static int g_checks;
+static int g_failures;
+
+#define CHECK(cond)                                                          \
+    do {                                                                     \
+        g_checks += 1;                                                       \
+        if (!(cond)) {                                                       \
+            g_failures += 1;                                                 \
+            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);           \
+        }                                                                    \
+    } while (0)
+
+#define CHECK_STR(actual, expected)                                          \
+    do {                                                                     \
+        g_checks += 1;                                                       \
+        const char *a_ = (actual);                                           \
+        const char *e_ = (expected);                                         \
+        if (a_ == NULL || strcmp(a_, e_) != 0) {                             \
+            g_failures += 1;                                                 \
+            printf("FAIL %s:%d: got [%s] want [%s]\n", __FILE__, __LINE__,   \
+                   a_ ? a_ : "(null)", e_);                                  \
+        }                                                                    \
+    } while (0)
+
+static void test_json_escape(void)
+{
+    char buf[128];
+
+    CHECK(sc_json_escape("abc", buf, sizeof(buf)) == 3);
+    CHECK_STR(buf, "abc");
+
+    CHECK(sc_json_escape("+", buf, sizeof(buf)) == 6);
+    CHECK_STR(buf, "\\u002B");
+
+    CHECK(sc_json_escape("\"", buf, sizeof(buf)) == 2);
+    CHECK_STR(buf, "\\\"");
+
+    CHECK(sc_json_escape("\\", buf, sizeof(buf)) == 2);
+    CHECK_STR(buf, "\\\\");
+
+    CHECK(sc_json_escape("\n", buf, sizeof(buf)) == 2);
+    CHECK_STR(buf, "\\n");
+
+    CHECK(sc_json_escape("\x01", buf, sizeof(buf)) == 6);
+    CHECK_STR(buf, "\\u0001");
+
+    /* Chinese: 主力机 = U+4E3B U+529B U+673A */
+    CHECK(sc_json_escape("\xE4\xB8\xBB\xE5\x8A\x9B\xE6\x9C\xBA", buf, sizeof(buf)) == 18);
+    CHECK_STR(buf, "\\u4E3B\\u529B\\u673A");
+
+    /* Emoji U+1F600 becomes a UTF-16 surrogate pair, like .NET does. */
+    CHECK(sc_json_escape("\xF0\x9F\x98\x80", buf, sizeof(buf)) == 12);
+    CHECK_STR(buf, "\\uD83D\\uDE00");
+
+    /* Invalid UTF-8 must not produce broken JSON. */
+    CHECK(sc_json_escape("\xFF", buf, sizeof(buf)) == 6);
+    CHECK_STR(buf, "\\uFFFD");
+
+    /* A writer that runs out of room must not overflow and must report oom. */
+    sc_json_w_t w;
+    char tiny[4];
+    sc_json_w_init(&w, tiny, sizeof(tiny));
+    sc_json_str(&w, "abcdef");
+    CHECK(w.oom);
+    CHECK(strlen(tiny) < sizeof(tiny));
+}
+
+static void test_display_name(void)
+{
+    sc_alias_table_t table;
+    sc_alias_table_init(&table);
+    CHECK(sc_alias_table_add(&table, "iPhone15,3", "主力机"));
+    CHECK(sc_alias_table_add(&table, "pixel 7", "备用机"));
+
+    char out[SC_STR_LEN];
+    CHECK_STR(sc_display_name(&table, "iPhone15,3", out, sizeof(out)), "主力机");
+    /* alias match is ASCII case-insensitive, like StringComparer.OrdinalIgnoreCase */
+    CHECK_STR(sc_display_name(&table, "PIXEL 7", out, sizeof(out)), "备用机");
+    /* hard-coded iPhone display map survives */
+    CHECK_STR(sc_display_name(&table, "iPhone14,3", out, sizeof(out)), "13 Pro Max");
+    /* raw model passes through when no alias matches */
+    CHECK_STR(sc_display_name(&table, "Pixel 8", out, sizeof(out)), "Pixel 8");
+    /* NULL / blank model -> the daemon's placeholder */
+    CHECK_STR(sc_display_name(&table, NULL, out, sizeof(out)), "未知机型");
+    CHECK_STR(sc_display_name(&table, "   ", out, sizeof(out)), "未知机型");
+
+    /* Blank aliases are rejected at insert time. */
+    sc_alias_table_t empty;
+    sc_alias_table_init(&empty);
+    CHECK(!sc_alias_table_add(&empty, "  ", "x"));
+    CHECK(!sc_alias_table_add(&empty, "x", "   "));
+}
+
+static void test_route(void)
+{
+    CHECK(sc_route_resolve("GET", "/status/") == SC_ROUTE_STATUS);
+    CHECK(sc_route_resolve("GET", "/health") == SC_ROUTE_HEALTH);
+    /* method is case-insensitive */
+    CHECK(sc_route_resolve("get", "/health") == SC_ROUTE_HEALTH);
+    /* trailing slash is load-bearing */
+    CHECK(sc_route_resolve("GET", "/status") == SC_ROUTE_NOT_FOUND);
+    CHECK(sc_route_resolve("GET", "/health/") == SC_ROUTE_NOT_FOUND);
+    /* path is case-sensitive */
+    CHECK(sc_route_resolve("GET", "/Health") == SC_ROUTE_NOT_FOUND);
+    CHECK(sc_route_resolve("GET", "/nope") == SC_ROUTE_NOT_FOUND);
+    /* non-GET wins even for unknown paths */
+    CHECK(sc_route_resolve("POST", "/status/") == SC_ROUTE_METHOD_NOT_ALLOWED);
+    CHECK(sc_route_resolve("POST", "/nope") == SC_ROUTE_METHOD_NOT_ALLOWED);
+    CHECK(sc_route_resolve("OPTIONS", "/health") == SC_ROUTE_METHOD_NOT_ALLOWED);
+    CHECK(sc_route_resolve(NULL, "/status/") == SC_ROUTE_METHOD_NOT_ALLOWED);
+}
+
+static void test_hysteresis(void)
+{
+    sc_probe_state_t state;
+    memset(&state, 0, sizeof(state));
+
+    /* one failure is not enough */
+    CHECK(sc_hysteresis_apply(&state, false, 100) == false);
+    CHECK(state.failures == 1);
+    CHECK(!state.has_last_seen);
+
+    /* two consecutive failures flip offline */
+    CHECK(sc_hysteresis_apply(&state, false, 200) == false);
+    CHECK(state.failures == 2);
+
+    /* a single success comes straight back online */
+    CHECK(sc_hysteresis_apply(&state, true, 300) == true);
+    CHECK(state.failures == 0);
+    CHECK(state.has_last_seen);
+    CHECK(state.last_seen_at == 300);
+
+    /* and one isolated failure does not knock it offline again */
+    CHECK(sc_hysteresis_apply(&state, false, 400) == true);
+    CHECK(sc_hysteresis_apply(&state, false, 500) == false);
+}
+
+static void test_health(void)
+{
+    sc_health_t health;
+
+    sc_health_evaluate_json("{\"schema\":3,\"generatedAt\":123,\"devices\":[]}",
+                            strlen("{\"schema\":3,\"generatedAt\":123,\"devices\":[]}"), &health);
+    CHECK(health.ok);
+    CHECK(health.has_device_count && health.device_count == 0);
+    CHECK(health.has_generated_at && health.generated_at == 123);
+    CHECK(health.has_schema && health.schema == 3);
+
+    /* devices must be an array */
+    sc_health_evaluate_json("{\"devices\":{}}", strlen("{\"devices\":{}}"), &health);
+    CHECK(!health.ok);
+
+    /* no devices member at all */
+    sc_health_evaluate_json("{\"generatedAt\":1}", strlen("{\"generatedAt\":1}"), &health);
+    CHECK(!health.ok);
+
+    /* non-object root */
+    sc_health_evaluate_json("[]", strlen("[]"), &health);
+    CHECK(!health.ok);
+
+    /* unparsable */
+    sc_health_evaluate_json("not json", strlen("not json"), &health);
+    CHECK(!health.ok);
+
+    /* missing generatedAt/schema does not block readiness, it just stays null */
+    sc_health_evaluate_json("{\"devices\":[]}", strlen("{\"devices\":[]}"), &health);
+    CHECK(health.ok);
+    CHECK(!health.has_generated_at);
+    CHECK(!health.has_schema);
+
+    /* a fractional generatedAt is not an int64 in the daemon's eyes */
+    sc_health_evaluate_json("{\"devices\":[],\"generatedAt\":1.5}",
+                            strlen("{\"devices\":[],\"generatedAt\":1.5}"), &health);
+    CHECK(health.ok);
+    CHECK(!health.has_generated_at);
+}
+
+static void test_snapshot_empty(void)
+{
+    sc_snapshot_t snapshot;
+    sc_snapshot_init(&snapshot);
+    snapshot.generated_at = 0;
+
+    char buf[512];
+    size_t len = sc_snapshot_render(&snapshot, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_STR(buf, "{\"schema\":3,\"generatedAt\":0,\"devices\":[]}");
+    CHECK(sc_snapshot_render_len(&snapshot) == len);
+}
+
+static void test_snapshot_full_device(void)
+{
+    sc_snapshot_t snapshot;
+    sc_snapshot_init(&snapshot);
+    snapshot.generated_at = 1792851926;
+
+    sc_device_t *device = sc_snapshot_append(&snapshot);
+    CHECK(device != NULL);
+    sc_str_set_raw(&device->id, "iphone");
+    sc_str_set_raw(&device->platform, "ios");
+    sc_str_set_raw(&device->model, "iPhone15,3");
+    sc_config_t cfg;
+    sc_config_defaults(&cfg);
+    sc_alias_table_add(&cfg.aliases, "iPhone15,3", "主力机");
+    char name[SC_STR_LEN];
+    sc_str_set_raw(&device->display_name,
+                   sc_display_name(&cfg.aliases, device->model.v, name, sizeof(name)));
+
+    device->battery_level.has = true;
+    device->battery_level.v = 87;
+    device->is_charging.has = true;
+    device->is_charging.v = true;
+    /* mediaState absent must render as "unknown", not null */
+    device->updated_at.has = true;
+    device->updated_at.v = 1792851926;
+
+    device->has_transport = true;
+    sc_str_set_raw(&device->transport.active, "usb");
+    device->transport.degraded.has = true;
+    device->transport.degraded.v = false;
+    device->transport.online.has = true;
+    device->transport.online.v = true;
+    device->transport.last_seen_at.has = true;
+    device->transport.last_seen_at.v = 1792851900;
+    sc_str_set_raw(&device->transport.detail, "usb");
+
+    char buf[2048];
+    size_t len = sc_snapshot_render(&snapshot, buf, sizeof(buf));
+    CHECK(len > 0);
+
+    const char *expected =
+        "{\"schema\":3,\"generatedAt\":1792851926,\"devices\":[{"
+        "\"id\":\"iphone\",\"platform\":\"ios\",\"model\":\"iPhone15,3\","
+        "\"displayName\":\"\\u4E3B\\u529B\\u673A\",\"batteryLevel\":87,"
+        "\"isCharging\":true,\"mediaTitle\":null,\"mediaArtist\":null,"
+        "\"mediaState\":\"unknown\",\"foregroundApp\":null,\"foregroundAppName\":null,"
+        "\"updatedAt\":1792851926,\"error\":null,"
+        "\"transport\":{\"active\":\"usb\",\"degraded\":false,\"online\":true,"
+        "\"lastSeenAt\":1792851900,\"detail\":\"usb\"}}]}";
+    CHECK_STR(buf, expected);
+
+    /* and the rendered body must be parseable by cJSON */
+    cJSON *root = cJSON_ParseWithLength(buf, len);
+    CHECK(root != NULL);
+    if (root != NULL) {
+        CHECK(cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(root, "devices")));
+        cJSON_Delete(root);
+    }
+}
+
+static void test_snapshot_console_and_ble_blocks(void)
+{
+    sc_snapshot_t snapshot;
+    sc_snapshot_init(&snapshot);
+    snapshot.generated_at = 100;
+
+    sc_device_t *console = sc_snapshot_append(&snapshot);
+    sc_str_set_raw(&console->id, "ps5");
+    sc_str_set_raw(&console->platform, "console");
+    sc_str_set_raw(&console->model, "PS5");
+    sc_str_set_raw(&console->display_name, "PS5");
+    console->has_console = true;
+    console->console.online.has = true;
+    console->console.online.v = false;
+    sc_str_set_raw(&console->console.method, "tcp");
+    sc_str_set_raw(&console->console.name, "PS5");
+    sc_str_set_raw(&console->console.type, "ps5");
+    sc_str_set(&console->console.status_text, "离线");
+    console->console.idle_hint.has = true;
+    console->console.idle_hint.v = true;
+    console->has_transport = true;
+    sc_str_set_raw(&console->transport.active, "none");
+    console->transport.degraded.has = true;
+    console->transport.degraded.v = false;
+    console->transport.online.has = true;
+    console->transport.online.v = false;
+
+    sc_device_t *ble = sc_snapshot_append(&snapshot);
+    sc_str_set_raw(&ble->id, "hrm");
+    sc_str_set_raw(&ble->platform, "ble");
+    sc_str_set_raw(&ble->model, "HRM");
+    sc_str_set_raw(&ble->display_name, "HRM");
+    ble->has_ble = true;
+    sc_str_set_raw(&ble->ble.address, "AA:BB:CC:DD:EE:FF");
+    sc_str_set_raw(&ble->ble.name, "HRM");
+    ble->ble.rssi.has = true;
+    ble->ble.rssi.v = -52;
+    sc_strlist_add(&ble->ble.services, "battery");
+    sc_strlist_add(&ble->ble.services, "heart_rate");
+    ble->ble.connected.has = true;
+    ble->ble.connected.v = true;
+    ble->ble.heart_rate.has = true;
+    ble->ble.heart_rate.v = 72;
+    ble->ble.last_seen_at.has = true;
+    ble->ble.last_seen_at.v = 99;
+
+    char buf[2048];
+    CHECK(sc_snapshot_render(&snapshot, buf, sizeof(buf)) > 0);
+
+    /* console block keys and order */
+    const char *console_expected =
+        "\"console\":{\"online\":false,\"method\":\"tcp\",\"lastSeenAt\":null,"
+        "\"mac\":null,\"idleHint\":true,\"name\":\"PS5\",\"type\":\"ps5\","
+        "\"statusText\":\"\\u79BB\\u7EBF\"}";
+    CHECK(strstr(buf, console_expected) != NULL);
+
+    /* ble block keys and order */
+    const char *ble_expected =
+        "\"ble\":{\"address\":\"AA:BB:CC:DD:EE:FF\",\"name\":\"HRM\",\"rssi\":-52,"
+        "\"services\":[\"battery\",\"heart_rate\"],\"connected\":true,"
+        "\"heartRate\":72,\"statusText\":null,\"lastSeenAt\":99}";
+    CHECK(strstr(buf, ble_expected) != NULL);
+}
+
+static void test_config_defaults_and_parse(void)
+{
+    sc_config_t cfg;
+    sc_config_defaults(&cfg);
+    CHECK(cfg.refresh_seconds == 30);
+    CHECK(cfg.console_count == 0);
+    CHECK(cfg.ble_count == 0);
+    CHECK(!cfg.pc_enabled);
+    CHECK(cfg.pc_timeout_seconds == 5);
+    CHECK(cfg.aliases.count == 0);
+
+    const char *json =
+        "{"
+        "\"RefreshIntervalSeconds\":15,"
+        "\"Aliases\":{\"PS5\":\"客厅\",\"iPhone15,3\":\"主力机\"},"
+        "\"Consoles\":["
+        "  {\"id\":\"ps5\",\"name\":\"PS5\",\"type\":\"ps5\",\"ip\":\"192.168.1.50\","
+        "   \"offlineText\":\"已关机\",\"tcpPorts\":[9295,9295,3074,0,70000]},"
+        "  {\"id\":\"xbox\",\"ip\":\"192.168.1.51\",\"tcpPorts\":[]},"
+        "  {\"id\":\"broken\"},"
+        "  {\"id\":\"badip\",\"ip\":\"999.1.1.1\"}"
+        "],"
+        "\"BleDevices\":["
+        "  {\"id\":\"hrm\",\"name\":\"HRM\",\"nameFilter\":\"Polar\",\"services\":[\"heart_rate\"],"
+        "   \"heartRateWaitSeconds\":6},"
+        "  {\"id\":\"buds\"},"
+        "  {\"id\":\"airpods\",\"address\":\"AA:BB:CC:DD:EE:FF\",\"services\":[\"nope\"]}"
+        "],"
+        "\"PcFeed\":{\"enabled\":true,\"url\":\"http://192.168.1.10:5099/status/\","
+        "\"timeoutSeconds\":9}"
+        "}";
+
+    sc_config_error_t errors[SC_MAX_CONFIG_ERRORS];
+    int error_count = sc_config_parse(json, strlen(json), &cfg, errors, SC_MAX_CONFIG_ERRORS);
+
+    CHECK(cfg.refresh_seconds == 15);
+    CHECK(cfg.console_count == 2);
+    CHECK(cfg.ble_count == 2);
+    CHECK(cfg.aliases.count == 2);
+    CHECK(cfg.pc_enabled);
+    CHECK_STR(cfg.pc_url.v, "http://192.168.1.10:5099/status/");
+    CHECK(cfg.pc_timeout_seconds == 9);
+
+    /* tcpPorts: dedupe, drop out-of-range, keep order */
+    CHECK(cfg.consoles[0].tcp_port_count == 2);
+    CHECK(cfg.consoles[0].tcp_ports[0] == 9295);
+    CHECK(cfg.consoles[0].tcp_ports[1] == 3074);
+    CHECK_STR(cfg.consoles[0].offline_text.v, "已关机");
+    /* an empty list disables the TCP fallback */
+    CHECK(cfg.consoles[1].tcp_port_count == 0);
+    CHECK_STR(cfg.consoles[1].name.v, "xbox");
+    CHECK_STR(cfg.consoles[1].type.v, "console");
+    CHECK_STR(cfg.consoles[1].offline_text.v, "离线");
+
+    /* two broken console rows and one broken BLE row */
+    CHECK(error_count == 3);
+    CHECK_STR(errors[0].platform.v, "console");
+    CHECK(strstr(errors[0].message.v, "id 或 ip") != NULL);
+    CHECK(strstr(errors[1].message.v, "IP 非法") != NULL);
+    CHECK_STR(errors[2].platform.v, "ble");
+    CHECK(strstr(errors[2].message.v, "address 或 nameFilter") != NULL);
+
+    /* BLE details */
+    CHECK(cfg.ble[0].want_heart_rate);
+    CHECK(!cfg.ble[0].want_battery);
+    CHECK(cfg.ble[0].heart_rate_wait_seconds == 6);
+    /* invalid services fall back to battery */
+    CHECK(cfg.ble[1].want_battery);
+}
+
+static void test_config_bad_input(void)
+{
+    sc_config_t cfg;
+    CHECK(sc_config_parse(NULL, 0, &cfg, NULL, 0) == 0);
+    CHECK(cfg.refresh_seconds == 30);
+
+    CHECK(sc_config_parse("not json", strlen("not json"), &cfg, NULL, 0) == 0);
+    CHECK(cfg.refresh_seconds == 30);
+
+    CHECK(sc_config_parse("[]", strlen("[]"), &cfg, NULL, 0) == 0);
+    CHECK(cfg.refresh_seconds == 30);
+
+    /* out-of-range interval falls back to the default */
+    const char *json = "{\"RefreshIntervalSeconds\":4}";
+    CHECK(sc_config_parse(json, strlen(json), &cfg, NULL, 0) == 0);
+    CHECK(cfg.refresh_seconds == 30);
+
+    json = "{\"RefreshIntervalSeconds\":\"30\"}";
+    CHECK(sc_config_parse(json, strlen(json), &cfg, NULL, 0) == 0);
+    CHECK(cfg.refresh_seconds == 30);
+}
+
+/* Compare the rendered 13 keys against schema/status-contract.json. */
+static void test_contract_key_order(void)
+{
+#ifdef SC_CONTRACT_PATH
+    FILE *handle = fopen(SC_CONTRACT_PATH, "rb");
+    if (handle == NULL) {
+        printf("SKIP contract test: %s not readable\n", SC_CONTRACT_PATH);
+        return;
+    }
+    (void)fseek(handle, 0, SEEK_END);
+    long size = ftell(handle);
+    (void)fseek(handle, 0, SEEK_SET);
+    if (size <= 0) {
+        fclose(handle);
+        printf("SKIP contract test: empty file\n");
+        return;
+    }
+    char *text = (char *)malloc((size_t)size + 1);
+    if (text == NULL) {
+        fclose(handle);
+        CHECK(0);
+        return;
+    }
+    size_t read = fread(text, 1, (size_t)size, handle);
+    fclose(handle);
+    text[read] = '\0';
+
+    cJSON *contract = cJSON_ParseWithLength(text, read);
+    free(text);
+    CHECK(contract != NULL);
+    if (contract == NULL) {
+        return;
+    }
+
+    cJSON *expected = cJSON_GetObjectItemCaseSensitive(contract, "snapshotDeviceFields");
+    CHECK(cJSON_IsArray(expected));
+
+    /* Render one device and read its key order back. */
+    sc_snapshot_t snapshot;
+    sc_snapshot_init(&snapshot);
+    snapshot.generated_at = 1;
+    sc_device_t *device = sc_snapshot_append(&snapshot);
+    sc_str_set_raw(&device->id, "x");
+    sc_str_set_raw(&device->platform, "console");
+
+    char buf[1024];
+    size_t len = sc_snapshot_render(&snapshot, buf, sizeof(buf));
+    cJSON *rendered = cJSON_ParseWithLength(buf, len);
+    CHECK(rendered != NULL);
+    if (rendered != NULL && cJSON_IsArray(expected)) {
+        cJSON *rows = cJSON_GetObjectItemCaseSensitive(rendered, "devices");
+        cJSON *row = cJSON_GetArrayItem(rows, 0);
+        int index = 0;
+        cJSON *expected_key = NULL;
+        cJSON_ArrayForEach(expected_key, expected)
+        {
+            cJSON *actual_key = cJSON_GetArrayItem(expected, index);
+            (void)actual_key;
+            if (index == 0) {
+                /* walk both lists in lock step */
+            }
+            index += 1;
+        }
+
+        int expected_count = cJSON_GetArraySize(expected);
+        int actual_count = 0;
+        for (cJSON *item = row->child; item != NULL; item = item->next) {
+            actual_count += 1;
+        }
+        CHECK(actual_count == expected_count);
+
+        index = 0;
+        cJSON *actual_item = row->child;
+        cJSON_ArrayForEach(expected_key, expected)
+        {
+            CHECK(actual_item != NULL);
+            if (actual_item == NULL) {
+                break;
+            }
+            CHECK_STR(actual_item->string, expected_key->valuestring);
+            actual_item = actual_item->next;
+            index += 1;
+        }
+    }
+    if (rendered != NULL) {
+        cJSON_Delete(rendered);
+    }
+    cJSON_Delete(contract);
+#else
+    printf("SKIP contract test: SC_CONTRACT_PATH not defined\n");
+#endif
+}
+
+int main(void)
+{
+    test_json_escape();
+    test_display_name();
+    test_route();
+    test_hysteresis();
+    test_health();
+    test_snapshot_empty();
+    test_snapshot_full_device();
+    test_snapshot_console_and_ble_blocks();
+    test_config_defaults_and_parse();
+    test_config_bad_input();
+    test_contract_key_order();
+
+    printf("\n%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures == 0 ? 0 : 1;
+}
