@@ -84,6 +84,22 @@ adb connect 192.168.1.101:5555
 
 不用。配置**每轮重读**，下一轮（默认 30 秒内）就生效。
 
+### `POST` 报 411 并返回一段 HTML，而不是 405 JSON
+
+因为请求里既没有 body 也没有 `Content-Length`。这类请求在进入 StatusCast 之前就被
+Windows HTTP 栈拒绝，返回的是 HTTP 栈自己的 HTML 错误页（`Content-Type: text/html`，
+不带 CORS 与缓存头），不是本进程生成的。
+
+`curl -X POST http://localhost:5099/status/` 就是这种写法。补一个长度即可拿到约定的
+405 JSON：
+
+```powershell
+curl.exe -X POST -H "Content-Length: 0" http://localhost:5099/status/
+# {"error":"method not allowed"}
+```
+
+路径与方法语义见 [HTTP API 与契约](http-api.md#路由表)。
+
 ### 端口 5099 被占用
 
 daemon 会打印错误并退出。找出占用者：
