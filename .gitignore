@@ -98,3 +98,11 @@ firmware/esp32/managed_components/
 firmware/esp32/sdkconfig
 firmware/esp32/sdkconfig.old
 firmware/esp32/host_test/build/
+
+# =========================
+# Local design notes
+# =========================
+# Specs and ticket drafts live here for agent/local use only. They are kept on
+# disk but never published: they carry machine-specific findings (real device
+# identifiers, LAN addresses, serial ports) that do not belong in a public repo.
+.scratch/
