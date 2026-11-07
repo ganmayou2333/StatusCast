@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
 
-### Added — ESP32 固件（`firmware/esp32/`，未发布）
+## [3.4.0] - 2026-11-07
+
+### Added — ESP32 固件（`firmware/esp32/`，experimental）
 
 - 新增独立状态服务器移植：ESP32-S3（N16R8，16MB Flash / 8MB PSRAM）跑 ESP-IDF 5.5.6，
   自己探测局域网主机、读取 BLE 外设，并通过 HTTP 拉取 PC daemon 的 `/status/` 补齐
@@ -18,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   13 键固定顺序、加法对象按 `console → node → transport → ble → nekotrak` 追加、非 ASCII
   一律 `\uXXXX` 转义（PS 5.1 零乱码）、404/405/503 精确字节。
 - 契约核心（投影 / 别名 / 转义 / 路由 / 就绪判定 / 迟滞 / 配置解析）抽成不依赖 ESP-IDF 的
-  `main/core/`，host 侧 147 项单测对照 `schema/status-contract.json` 全绿。
+  `main/core/`，host 侧 193 项检查对照 `schema/status-contract.json` 全绿。
 - SSD1315 128×64 单色屏：总览页 + 设备轮播（全 ASCII 字库）；屏缺失时只打日志、业务不受影响。
 - 配置：LittleFS `config.json`（与 PC 侧字段名一致，另有 `PcFeed` 键）+ 编译期默认镜像 +
   串口 `cfg put` 粘贴模式；WiFi 凭据只进 NVS；串口命令 `cfg` / `net` / `json` / `stats` /
@@ -31,10 +33,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   经 `tools/pc_feed_relay.py` 合并 PC 的 iphone/android/nekotrak（含 `currentGame` 与 `pet` 透传）、
   停 daemon 后按 daemon 语义降级为 `读取超时`、NekoTool `ultimate_status.ps1` 输出
   `🎮 Home Router 在线 | 🎮 Ghost 已关机 | 📶 Mijia Scale 已连接`。
-- 待验证：屏幕（用户尚未接线）；心率带通知读取。
+- 屏幕已在真机验证（2026-11-06，`SSD1315 ready at 0x3C (sda=8 scl=9)`，总览页与轮播已上屏）。
+  仍未验证：心率带 `0x180D` 通知读取。
 
+### Fixed
 
-### Added
+- **固件 HTTP handler 表槽位不足**：`max_uri_handlers` 只按公开路由的数量分配（10），
+  实际注册 20 个，导致 `GET`/`DELETE /control/coredump`、`GET /control/audit` 以及七个
+  通配 405 处理器在启动时被静默丢弃——「任何非 GET 返回 405」实际变成了 404。
+  路由计数收进 `core/sc_route_counts.h`，两张路由表各加 `_Static_assert`，host 测试断言总数。
+- daemon 启动横幅不再硬编码版本号，改为读程序集版本。此前 `<Version>` 升到 3.4.0 后
+  横幅仍打 `v3.3.0`，而 `UpdateChecker` 比较的正是程序集版本。
+- `firmware/esp32/tools/host-test.ps1` 之前根本跑不起来：契约路径多退了一级目录，且
+  `-DSC_CONTRACT_PATH` 的引号被 PowerShell 吃掉，编译器把 `G:/…` 当成标识符。同时补上
+  `-DSC_FIXTURE_DIR`，daemon 快照往返测试不再被静默跳过。
+- 六处文档与实现不符：`/health` 形状（真实是 `{ok, deviceCount, generatedAt, schema}`）、
+  固件「WS2812 本版未驱动」（早已驱动）、`firmware/esp32/README.md` 里不存在的 `tools/build.ps1`、
+  固件 API 列表缺 `/diag` 与 `/control/*`、固件「局域网内无鉴权」（`/control/*` 需要令牌）、
+  固件里 `.\scripts\ultimate_status.ps1` 指向不存在的目录。
+
+### Changed
+
+- **文档结构重写**：README 缩成门面（是什么 / 截图 / 快速开始 / 文档索引），细节下沉到
+  `docs/guide/` 的安装、设备采集、HTTP 契约、控制面与排障五篇；新增 `docs/README.md` 索引、
+  `GLOSSARY.md` 与 `docs/adr/0001-control-surface-static-token.md`。
+- 采集器注册点在文档里改为 `build_collectors()`（原文写的是 `collect_all()`）。
+- 加法对象数量在文档里改为五个（原文写四个，漏了 `nekotrak`）。
+- `docs/*-v3.4.0.md` 两篇社区发帖稿移到 `docs/posts/`，并标注其中五张截图未被仓库收录。
+- `.scratch/` 停止被 git 跟踪（本地保留），因为里面的真机笔记带有设备 MAC、局域网地址与 SSID。
+- 新增固件 CI：host 单测每次跑；ESP-IDF 全量构建只在打 tag 与手动触发时跑。
+- `release` 工作流不再把整份 `CHANGELOG.md` 当 release 正文，只取当前版本那一节。
+- README 顶部改用 `docs/images/` 下的实际截图；此前引用的 `docs/screenshots/*` 从未提交过。
+
+### Added — PC 侧（daemon / collectors）
 
 - `collectors/nekotrak_collector.py`: NekoTrak on this PC becomes a device of
   its own (`platform: "windows"`, `id: "nekotrak"`) with an additive
