@@ -6,7 +6,7 @@ StatusCast is currently an early-stage desktop application. Security fixes are a
 
 ## Reporting a vulnerability
 
-Please use GitHub's private vulnerability reporting for this repository rather than opening a public issue.
+Please use GitHub's [private vulnerability reporting](https://github.com/ganmayou2333/StatusCast/security/advisories/new) for this repository rather than opening a public issue. The same channel is the reporting route for the Code of Conduct.
 
 Include:
 
@@ -15,7 +15,42 @@ Include:
 - steps to reproduce,
 - expected and observed behavior.
 
-The HTTP API binds to `localhost` only; never expose port `5099` to an untrusted network without adding authentication and a reverse proxy.
+## Trust boundaries at a glance
+
+StatusCast now ships two things with very different exposure, and conflating them is the main way to get this wrong:
+
+| | PC daemon | ESP32 firmware |
+| --- | --- | --- |
+| Binds | `localhost` + `127.0.0.1` only | **`0.0.0.0:5099`** |
+| Reachable from the LAN | No | **Yes** |
+| Read-only surface (`/status/` `/health` `/diag`) | No auth needed (loopback only) | **No auth** — anyone on the LAN can read your device list |
+| Write surface (`/control/*`) | Does not exist | **Shared static token**, plaintext HTTP |
+
+The daemon's loopback-only bind is a real security boundary: never expose port `5099` to an untrusted network without adding authentication and a reverse proxy.
+
+## ESP32 firmware
+
+The firmware is a separate, LAN-exposed service. Read the full route table and threat notes in [docs/guide/control-api.md](docs/guide/control-api.md); the architectural reasoning is in [docs/adr/0001-control-surface-static-token.md](docs/adr/0001-control-surface-static-token.md).
+
+**What an attacker on the same LAN can do without any credential:**
+
+- read the complete device inventory from `GET /status/` (device names, models, battery levels, current media titles, console MAC addresses and last-seen times);
+- read `GET /diag` (round timing, I2C addresses, temperature and humidity, LED state);
+- observe that the device exists and is running.
+
+**What requires the control token:**
+
+- reboot the board, rewrite the whole `config.json`, rotate the token, read the log ring, read or erase the crash dump.
+
+**Known, deliberately accepted weaknesses of that control surface** (all recorded in the ADR):
+
+1. **The default token is the public string `statuscast`.** It is in `Kconfig.projbuild` and in the shipped `sdkconfig`. Rotate it before putting the board on any network you do not control.
+2. **Plaintext HTTP.** The token and request bodies cross the LAN in the clear and can be sniffed. There is no TLS in this version.
+3. **Static shared secret with no replay protection.** A captured request header can be replayed indefinitely against reboot, config and token rotation.
+4. **No rate limiting or lockout.** Token guesses are unbounded (and not constant-time compared).
+5. **No way back to the default.** Nothing deletes the NVS `ctl_token` key; reverting requires erasing NVS, which also drops WiFi credentials and hysteresis state.
+
+Mitigations available today: rotate the token, and keep the board on a trusted VLAN. TLS, short-lived tokens and IP allowlists are tracked as v2 work.
 
 ## LAN collectors (consoles, Mac / Linux nodes)
 

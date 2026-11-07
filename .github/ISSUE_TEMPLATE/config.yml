@@ -1,0 +1,13 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 提问 / 讨论 / 展示你的配置
+    url: https://github.com/ganmayou2333/StatusCast/discussions
+    about: 用法问题、配置交流、想秀一下自己的状态栏——这些不是 bug，走 Discussions 更合适。
+
+  - name: 排障 FAQ
+    url: https://github.com/ganmayou2333/StatusCast/blob/main/docs/guide/faq.md
+    about: 按设备分类的常见故障：iPhone Wi-Fi、mediaTitle 为 null、ADB not found、/health 503、BLE 电量读不到……
+
+  - name: 报告安全问题（私密）
+    url: https://github.com/ganmayou2333/StatusCast/security/advisories/new
+    about: 漏洞、令牌泄露、越权访问。请不要开公开 issue，也用这个渠道举报行为准则问题。

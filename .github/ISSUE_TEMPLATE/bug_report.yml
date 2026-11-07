@@ -1,47 +1,90 @@
 name: Bug report
-description: Report a reproducible problem with StatusCast
+description: Report a reproducible problem with StatusCast (PC daemon, collectors, or ESP32 firmware)
 title: "[Bug]: "
-labels: ["bug"]
+labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a problem. Please include enough detail to reproduce it.
-  - type: input
-    id: windows
+        Thanks for taking the time to report a problem.
+
+        Before you go on, two shortcuts that solve most reports:
+        - [排障 FAQ](https://github.com/ganmayou2333/StatusCast/blob/main/docs/guide/faq.md) — 按设备分类的常见故障
+        - `GET /health` returns 503? That usually just means the snapshot has not been written yet.
+
+        请不要把真实的内网 IP、MAC、SSID、令牌或配对码贴进来。
+
+  - type: dropdown
+    id: component
     attributes:
-      label: Windows version
-      description: e.g. Windows 11 23H2
+      label: Which part?
+      description: Pick the piece that misbehaves. This routes the report to the right place.
+      options:
+        - PC daemon (HTTP API, snapshot, /health)
+        - A collector (iPhone / Android / console / SSH node / BLE / NekoTrak)
+        - ESP32 firmware
+        - NekoTool integration (URL / output format)
+        - Documentation (a command or path that does not work)
+        - Not sure
     validations:
       required: true
+
   - type: input
-    id: iphone
+    id: version
     attributes:
-      label: iPhone model and iOS version
-      description: e.g. iPhone 14 Pro Max, iOS 18.1
+      label: StatusCast version
+      description: The `[SYSTEM] StatusCast Core vX.Y.Z 启动` banner line, or the firmware build commit.
+      placeholder: v3.4.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, .NET/Python version, and for firmware the board + ESP-IDF version.
+      placeholder: Windows 11 23H2, .NET 10.0.403, Python 3.14.9
+    validations:
+      required: true
+
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Connect iPhone via USB
-        2. Start StatusCast
-        3. ...
+        1. config.json with a Consoles entry for ...
+        2. Start the daemon with ...
+        3. GET /status/ returns ...
     validations:
       required: true
+
   - type: textarea
     id: expected
     attributes:
       label: Expected behavior
     validations:
       required: true
+
   - type: textarea
     id: actual
     attributes:
       label: Actual behavior / logs
-      description: Include `status_core.py` output and relevant app errors.
+      description: |
+        Paste the relevant output. Most useful:
+        - `.\.venv\Scripts\python.exe status_core.py --pretty` (collector problems)
+        - `curl.exe http://localhost:5099/health` (daemon problems)
+        - the serial log around boot (firmware problems)
+      render: text
     validations:
       required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config (redacted)
+      description: Strip real IPs, MAC addresses, SSIDs, tokens and pairing codes first.
+      render: json
+
   - type: textarea
     id: extra
     attributes:

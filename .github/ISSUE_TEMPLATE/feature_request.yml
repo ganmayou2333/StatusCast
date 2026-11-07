@@ -1,25 +1,59 @@
 name: Feature request
-description: Suggest an improvement or a new adapter
+description: Suggest an improvement, a new collector, or a new device family
 title: "[Feature]: "
-labels: ["enhancement"]
+labels: ["enhancement", "needs-triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        If the change would touch the schema-3 contract (device keys, additive
+        objects, status codes or error bodies), say so — it affects three
+        implementations at once (Python collectors, the C# daemon and the ESP32
+        firmware), so it needs agreement before code.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part would this change?
+      options:
+        - A new collector / new device family
+        - Existing collector behavior
+        - HTTP API / contract
+        - ESP32 firmware
+        - Documentation
+        - Build, CI or tooling
+    validations:
+      required: true
+
   - type: textarea
     id: problem
     attributes:
       label: Problem or use case
-      description: What would you like StatusCast to do?
+      description: What can't you do today? Describe the situation, not the solution.
     validations:
       required: true
+
   - type: textarea
     id: proposal
     attributes:
       label: Proposed solution
     validations:
       required: true
+
   - type: textarea
     id: alternatives
     attributes:
       label: Alternatives considered
+      description: What else could solve it, and why is it worse?
+
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: Contract impact
+      options:
+        - label: This would add or change a field in `/status/`, so `schema/status-contract.json` and all three implementations need updating
+        - label: This would only change internal behaviour and leaves the JSON shape alone
+
   - type: textarea
     id: context
     attributes:
