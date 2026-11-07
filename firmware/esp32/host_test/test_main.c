@@ -13,6 +13,7 @@
 #include "cJSON.h"
 #include "sc_core.h"
 #include "sc_json.h"
+#include "sc_route_counts.h"
 #include "sc_snapshot.h"
 #include "sc_wire_parse.h"
 
@@ -691,11 +692,32 @@ static void test_daemon_fixture_roundtrip(void)
 #endif
 }
 
+/* The route budget is the one number that, when it under-counts, silently drops
+ * handlers at runtime with no compile error -- that is how GET/DELETE
+ * /control/coredump, GET /control/audit and all seven catch-all handlers once
+ * went missing while `idf.py build` stayed green.
+ *
+ * net/http_server.c and control/control_api.c each _Static_assert their real
+ * table against these constants, so the chain is closed from both ends: change a
+ * table without changing the header and the firmware build fails; change the
+ * header without changing this test and the host suite fails. The literals here
+ * are also exactly what docs/guide/http-api.md promises. */
+static void test_route_budget(void)
+{
+    CHECK(SC_HTTP_SPECIFIC_ROUTES == 3);  /* /status/, /health, /diag */
+    CHECK(SC_CONTROL_ROUTE_COUNT == 10);  /* the authenticated control routes */
+    CHECK(SC_HTTP_CATCHALL_ROUTES == 7);  /* one wildcard entry per method: 405, not 404 */
+    CHECK(SC_HTTP_TOTAL_ROUTES == 20);    /* what httpd_start must allocate */
+    CHECK(SC_HTTP_TOTAL_ROUTES ==
+          SC_HTTP_SPECIFIC_ROUTES + SC_CONTROL_ROUTE_COUNT + SC_HTTP_CATCHALL_ROUTES);
+}
+
 int main(void)
 {
     test_json_escape();
     test_display_name();
     test_route();
+    test_route_budget();
     test_hysteresis();
     test_health();
     test_snapshot_empty();

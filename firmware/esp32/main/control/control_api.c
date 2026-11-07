@@ -20,6 +20,7 @@
 #include "collectors/ble_collector.h"
 #include "config_guard.h"
 #include "config_store.h"
+#include "sc_route_counts.h"
 #include "log_ring.h"
 #include "mem_util.h"
 #include "net/wifi_sta.h"
@@ -514,6 +515,10 @@ static const httpd_uri_t s_routes[] = {
      .user_ctx = NULL},
     {.uri = "/control/audit", .method = HTTP_GET, .handler = h_audit, .user_ctx = NULL},
 };
+
+/* The server sizes its handler table with this count: see sc_route_counts.h. */
+_Static_assert(sizeof(s_routes) / sizeof(s_routes[0]) == SC_CONTROL_ROUTE_COUNT,
+               "s_routes must contain SC_CONTROL_ROUTE_COUNT routes (core/sc_route_counts.h)");
 
 esp_err_t control_api_register(httpd_handle_t server)
 {

@@ -8,6 +8,7 @@
 #include "esp_log.h"
 
 #include "app_state.h"
+#include "sc_route_counts.h"
 #include "ui/status_led.h"
 #include "control/control_api.h"
 
@@ -134,6 +135,14 @@ static const httpd_uri_t s_routes[] = {
     {.uri = "/*", .method = HTTP_HEAD, .handler = handle_method_not_allowed, .user_ctx = NULL},
 };
 
+/* httpd_start allocates a fixed number of handler slots; a table that grows
+ * without sc_route_counts.h growing with it silently loses the handlers at the
+ * end of the registration order. Fail the build instead. */
+_Static_assert(sizeof(s_routes) / sizeof(s_routes[0]) ==
+                   SC_HTTP_SPECIFIC_ROUTES + SC_HTTP_CATCHALL_ROUTES,
+               "s_routes must contain SC_HTTP_SPECIFIC_ROUTES exact routes followed by "
+               "SC_HTTP_CATCHALL_ROUTES catch-all routes");
+
 esp_err_t http_server_start(uint16_t port)
 {
     if (s_server != NULL) {
@@ -142,7 +151,8 @@ esp_err_t http_server_start(uint16_t port)
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = port;
-    config.max_uri_handlers = (uint16_t)(sizeof(s_routes) / sizeof(s_routes[0]));
+    /* Every table we register from, not just s_routes: see sc_route_counts.h. */
+    config.max_uri_handlers = (uint16_t)SC_HTTP_TOTAL_ROUTES;
     config.stack_size = 8192;
     config.lru_purge_enable = true;
     // Needed for the catch-all routes ("/*").
@@ -157,14 +167,18 @@ esp_err_t http_server_start(uint16_t port)
 
     /* Exact routes first, then the authenticated control API, and only then the
      * catch-all wildcard handlers: httpd matches handlers in registration order. */
-    const size_t specific_routes = 3;
+    const size_t specific_routes = SC_HTTP_SPECIFIC_ROUTES;
     for (size_t i = 0; i < specific_routes; ++i) {
         err = httpd_register_uri_handler(s_server, &s_routes[i]);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "register %s: %s", s_routes[i].uri, esp_err_to_name(err));
         }
     }
-    (void)control_api_register(s_server);
+    err = control_api_register(s_server);
+    if (err != ESP_OK) {
+        /* Half-registered is worse than absent: say so instead of dropping it. */
+        ESP_LOGE(TAG, "control API not registered: %s", esp_err_to_name(err));
+    }
     for (size_t i = specific_routes; i < sizeof(s_routes) / sizeof(s_routes[0]); ++i) {
         err = httpd_register_uri_handler(s_server, &s_routes[i]);
         if (err != ESP_OK) {

@@ -12,7 +12,10 @@ $here = $PSScriptRoot
 $root = Split-Path -Parent $here
 $core = Join-Path $root 'main\core'
 $cjson = Join-Path $core 'vendor\cjson'
-$contract = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $root))) 'schema\status-contract.json'
+# $root is <repo>/firmware/esp32, so two levels up is the repo root.
+$repo = Split-Path -Parent (Split-Path -Parent $root)
+$contract = Join-Path $repo 'schema\status-contract.json'
+$fixtures = Join-Path $root 'host_test\fixtures'
 $out = Join-Path $root 'host_test\build'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
@@ -44,11 +47,15 @@ $sources = @(
     (Join-Path $core 'sc_display.c'),
     (Join-Path $cjson 'cJSON.c')
 )
-$define = '-DSC_CONTRACT_PATH=' + [char]34 + $contract.Replace('\', '/') + [char]34
+# PowerShell strips the inner quotes of a native argument, so the value would
+# reach the compiler as a bare token (G:/... -> undeclared identifier 'G').
+# Escaping them as \" survives Windows command-line parsing.
+$contractDefine = '-DSC_CONTRACT_PATH=\"' + $contract.Replace('\', '/') + '\"'
+$fixtureDefine = '-DSC_FIXTURE_DIR=\"' + $fixtures.Replace('\', '/') + '\"'
 
 Write-Host "compiling host tests with $Zig ..." -ForegroundColor Cyan
 & $Zig cc -std=c11 -Wall -Wextra -Wno-unused-parameter `
-    -I $core -I $cjson $define @sources -o $exe
+    -I $core -I $cjson $contractDefine $fixtureDefine @sources -o $exe
 if ($LASTEXITCODE -ne 0) { throw "host test build failed" }
 
 & $exe
