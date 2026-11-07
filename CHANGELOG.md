@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
 
+### Fixed — ESP32 固件（由 bug hunt 发现，见 `docs/test-reports/v3.4.0-bug-hunt.md`）
+
+- **快照容量**：渲染缓冲、`/status/` 响应副本与路由表槽位原本是三个互不知情的数字，
+  8192 只装得下 8 台带 `nekotrak` 的设备；第 9 台起 `sc_snapshot_render()` 返回 0，
+  整轮**不发布**——板子永远返回上一轮快照，`/health` 却报旧计数为最新。
+  现在三处统一到 `core/sc_limits.h` 的 `SC_SNAPSHOT_JSON_BUDGET`（73728），
+  `app_main.c` 与 `http_server.c` 各加 `_Static_assert`，host 测试用**填满全部字段的
+  16 行**验证预算真的够（实测 65,985 字节）。响应副本改从 PSRAM 分配。
+- **透传子树静默丢弃**：`nekotrak.pet` / `pomodoro` 序列化后超过 447 字节时整个字段消失，
+  无日志无错误字段；参考机真实 `pet` 已达 309 字节。缓冲提到 512，放不下时改为向
+  `nekotrak.warns` 追加一条说明。
+- **UTF-8 截断产生替换符**：95 字节截断会劈开多字节序列，转义层随后为每个残留字节吐一个
+  `\uFFFD`（中文 2 个、emoji 3 个）。改为按字符边界回退。
+- **`.NET-style Trim()` 名不副实**：只剪 ASCII 空白，NBSP / U+3000 在固件里保留而在 daemon
+  里被剪掉，两侧字节不一致。改用 .NET `char.IsWhiteSpace` 的完整空白集合。
+- **`/health` 就绪判定与 daemon 不一致**：cJSON 容忍尾部垃圾而 `System.Text.Json` 不容忍，
+  同一份 body 固件 200、daemon 503。改为校验解析后只剩空白。
+- **`/diag` 在无 I2C 设备时输出非法 JSON**：`app_state.c` 里 `out[0] = '\0'` 写成了
+  多字符常量 `'\\0'`，实际写入 ASCII `'0'`（0x30）；而调用方是未初始化栈缓冲，
+  没接屏的板子上 `/control/status` 同样受影响。修完后 `main/` 构建告警归零。
+
 ## [3.4.0] - 2026-11-07
 
 ### Added — ESP32 固件（`firmware/esp32/`，experimental）

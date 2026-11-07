@@ -13,31 +13,129 @@ void sc_str_clear(sc_str_t *s)
     s->v[0] = '\0';
 }
 
+/* --------------------------------------------------------------- UTF-8 */
+
+/* Byte length of the coded character starting at src[i], bounded by end.
+ * Malformed input is one opaque byte (mirrors .NET's replacement handling). */
+static size_t utf8_seq_len(const char *src, size_t i, size_t end, uint32_t *cp)
+{
+    unsigned char b0 = (unsigned char)src[i];
+    size_t need;
+    uint32_t value;
+
+    if (b0 < 0x80) {
+        *cp = b0;
+        return 1;
+    }
+    if ((b0 & 0xE0) == 0xC0) {
+        need = 1;
+        value = b0 & 0x1Fu;
+    } else if ((b0 & 0xF0) == 0xE0) {
+        need = 2;
+        value = b0 & 0x0Fu;
+    } else if ((b0 & 0xF8) == 0xF0) {
+        need = 3;
+        value = b0 & 0x07u;
+    } else {
+        *cp = 0xFFFD; /* stray continuation byte or invalid lead */
+        return 1;
+    }
+    if (i + need >= end) {
+        *cp = 0xFFFD;
+        return 1;
+    }
+    for (size_t k = 1; k <= need; ++k) {
+        unsigned char bk = (unsigned char)src[i + k];
+        if ((bk & 0xC0) != 0x80) {
+            *cp = 0xFFFD;
+            return 1;
+        }
+        value = (value << 6) | (bk & 0x3Fu);
+    }
+    *cp = value;
+    return need + 1;
+}
+
+/* .NET's char.IsWhiteSpace set, which is what string.Trim() uses. Matching it
+ * matters because the daemon trims with .NET semantics: if this side keeps a
+ * character the daemon drops, the same input renders differently in the two
+ * implementations. */
+static bool cp_is_space(uint32_t cp)
+{
+    if (cp == 0x20 || (cp >= 0x09 && cp <= 0x0D)) {
+        return true;
+    }
+    if (cp == 0x85 || cp == 0xA0 || cp == 0x1680) {
+        return true;
+    }
+    if (cp >= 0x2000 && cp <= 0x200A) {
+        return true;
+    }
+    if (cp == 0x2028 || cp == 0x2029 || cp == 0x202F || cp == 0x205F) {
+        return true;
+    }
+    return cp == 0x3000;
+}
+
+/* Copy src[from..to) into s, truncating on a UTF-8 character boundary.
+ * Cutting by bytes alone would leave a partial sequence at the tail, which the
+ * escaper then turns into one U+FFFD per leftover byte. */
+static void store_span(sc_str_t *s, const char *src, size_t from, size_t to)
+{
+    size_t len = to - from;
+    if (len == 0) {
+        sc_str_clear(s);
+        return;
+    }
+    if (len > SC_STR_LEN - 1) {
+        size_t cut = SC_STR_LEN - 1;
+        /* Back up while the first dropped byte is a continuation byte, so the
+         * kept prefix ends on a character boundary. */
+        while (cut > 0 && ((unsigned char)src[from + cut] & 0xC0) == 0x80) {
+            --cut;
+        }
+        len = cut;
+        if (len == 0) {
+            sc_str_clear(s);
+            return;
+        }
+    }
+    memcpy(s->v, src + from, len);
+    s->v[len] = '\0';
+    s->has = true;
+}
+
 void sc_str_set(sc_str_t *s, const char *src)
 {
     if (src == NULL) {
         sc_str_clear(s);
         return;
     }
-    size_t len = strlen(src);
-    while (len > 0 && (unsigned char)src[len - 1] <= ' ') {
-        --len;
+    size_t end = strlen(src);
+    size_t start = 0;
+    size_t stop = 0;
+    bool seen = false;
+    size_t i = 0;
+
+    /* Scan runes: remember the first and last non-whitespace rune, which trims
+     * both ends while leaving interior whitespace alone. */
+    while (i < end) {
+        uint32_t cp = 0;
+        size_t n = utf8_seq_len(src, i, end, &cp);
+        if (!cp_is_space(cp)) {
+            if (!seen) {
+                start = i;
+                seen = true;
+            }
+            stop = i + n;
+        }
+        i += n;
     }
-    size_t lead = 0;
-    while (lead < len && (unsigned char)src[lead] <= ' ') {
-        ++lead;
-    }
-    len -= lead;
-    if (len == 0) {
+    if (!seen) {
         sc_str_clear(s);
         return;
     }
-    if (len > SC_STR_LEN - 1) {
-        len = SC_STR_LEN - 1;
-    }
-    memcpy(s->v, src + lead, len);
-    s->v[len] = '\0';
-    s->has = true;
+    store_span(s, src, start, stop);
 }
 
 void sc_str_set_raw(sc_str_t *s, const char *src)
@@ -46,13 +144,7 @@ void sc_str_set_raw(sc_str_t *s, const char *src)
         sc_str_clear(s);
         return;
     }
-    size_t len = strlen(src);
-    if (len > SC_STR_LEN - 1) {
-        len = SC_STR_LEN - 1;
-    }
-    memcpy(s->v, src, len);
-    s->v[len] = '\0';
-    s->has = true;
+    store_span(s, src, 0, strlen(src));
 }
 
 bool sc_str_is_blank(const char *s)
@@ -60,8 +152,12 @@ bool sc_str_is_blank(const char *s)
     if (s == NULL) {
         return true;
     }
-    for (const char *p = s; *p != '\0'; ++p) {
-        if ((unsigned char)*p > ' ') {
+    size_t end = strlen(s);
+    size_t i = 0;
+    while (i < end) {
+        uint32_t cp = 0;
+        i += utf8_seq_len(s, i, end, &cp);
+        if (!cp_is_space(cp)) {
             return false;
         }
     }
@@ -323,17 +419,34 @@ static bool json_get_i32(const cJSON *root, const char *name, int32_t *out)
     return true;
 }
 
+/* True when everything from `p` to `end` is JSON-insignificant whitespace. */
+static bool only_whitespace_left(const char *p, const char *end)
+{
+    while (p < end) {
+        char c = *p++;
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+            return false;
+        }
+    }
+    return true;
+}
+
 void sc_health_evaluate_json(const char *json, size_t len, sc_health_t *out)
 {
     memset(out, 0, sizeof(*out));
     if (json == NULL || len == 0) {
         return;
     }
-    cJSON *root = cJSON_ParseWithLength(json, len);
+    /* cJSON stops at the end of the first value and ignores trailing bytes; the
+     * daemon parses with System.Text.Json, which rejects them. Read the parse
+     * end position so both sides agree on what counts as a usable snapshot. */
+    const char *parse_end = NULL;
+    cJSON *root = cJSON_ParseWithLengthOpts(json, len, &parse_end, 0);
     if (root == NULL) {
         return;
     }
-    if (!cJSON_IsObject(root)) {
+    if (!cJSON_IsObject(root) || parse_end == NULL ||
+        !only_whitespace_left(parse_end, json + len)) {
         cJSON_Delete(root);
         return;
     }

@@ -17,6 +17,10 @@
 
 方法检查在路径检查之**前**，所以 `POST /nope` 得到的是 405 而不是 404。路径用 `Url.AbsolutePath` 做 `Ordinal` 比较：尾斜杠与大小写都是精确匹配。查询串被忽略，`/status/?x=1` 仍命中 `/status/`。
 
+> **`POST` / `PUT` 必须带 `Content-Length`（哪怕为 `0`）。** 两者都不带时，请求在进入本进程之前就被 Windows HTTP 栈拒绝，返回 **411 + 一段 HTML 错误页**（`Content-Type: text/html`，且不含下面列出的 CORS / 缓存头）。这段响应不由 StatusCast 生成，应用无法拦截或改写。
+>
+> `curl -X POST …` 正是「无 body 无 `Content-Length`」的写法，会撞上它；PowerShell 的 `Invoke-WebRequest -Method Post` 会自动补 `Content-Length: 0`，所以看不到。其它方法（`PATCH` / `DELETE` / `OPTIONS` / `HEAD`）不受影响，一律 405。
+
 ### ESP32 固件
 
 在上面基础上多了 `GET /diag` 和十个需要鉴权的 `/control/*` 路由。控制面单独成篇，见 [ESP32 控制面](control-api.md)。
@@ -42,7 +46,7 @@
 
 ### 响应头
 
-每个响应都带：
+每个**由本进程生成**的响应都带：
 
 ```text
 Access-Control-Allow-Origin: *
@@ -50,6 +54,8 @@ Cache-Control: no-store
 Content-Type: application/json; charset=utf-8
 Content-Length: <精确字节数>
 ```
+
+`Server: Microsoft-HTTPAPI/2.0` 与 `Date` 由 Windows HTTP 栈追加，不是本进程设置的。上面 411 那条不是本进程生成的响应，因此四个头都不保证存在。
 
 没有鉴权、Cookie、ETag、gzip，不用 chunked。（固件的 `/control/log` 和 `/control/coredump` 是例外，见控制面文档。）
 

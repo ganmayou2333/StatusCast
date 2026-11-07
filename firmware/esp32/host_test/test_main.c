@@ -13,6 +13,7 @@
 #include "cJSON.h"
 #include "sc_core.h"
 #include "sc_json.h"
+#include "sc_limits.h"
 #include "sc_route_counts.h"
 #include "sc_snapshot.h"
 #include "sc_wire_parse.h"
@@ -712,12 +713,324 @@ static void test_route_budget(void)
           SC_HTTP_SPECIFIC_ROUTES + SC_CONTROL_ROUTE_COUNT + SC_HTTP_CATCHALL_ROUTES);
 }
 
+/* ============================================================================
+ * Regression guards for the defects found in the v3.4.0 bug hunt.
+ *
+ * Each of these was red against the code as shipped in v3.4.0; they exist so the
+ * fixed behaviour cannot silently regress. See
+ * docs/test-reports/v3.4.0-bug-hunt.md for the measurements that motivated them.
+ * ========================================================================= */
+
+/* Fill a device with the largest nekotrak raw subtree the model allows, which is
+ * what a chatty NekoTrak pet produces in practice. */
+static void fill_fat_nekotrak(sc_device_t *d)
+{
+    d->has_nekotrak = true;
+    sc_str_set(&d->nekotrak.version, "1.2.0");
+    d->nekotrak.has_pet = true;
+    memset(d->nekotrak.pet_json, 'P', SC_RAW_JSON_LEN - 1);
+    d->nekotrak.pet_json[0] = '{';
+    d->nekotrak.pet_json[SC_RAW_JSON_LEN - 2] = '}';
+    d->nekotrak.pet_json[SC_RAW_JSON_LEN - 1] = '\0';
+}
+
+/* Every string at its maximum, every block present: the true worst case a single
+ * row can contribute. */
+static void fill_maximal_device(sc_device_t *d, int i)
+{
+    char tmp[SC_STR_LEN];
+    memset(tmp, 'M', sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+
+    snprintf(d->id.v, SC_STR_LEN, "device-%02d", i);
+    d->id.has = true;
+    sc_str_set_raw(&d->platform, "android");
+    sc_str_set_raw(&d->model, tmp);
+    sc_str_set_raw(&d->display_name, tmp);
+    d->battery_level.has = true;
+    d->battery_level.v = 100;
+    d->is_charging.has = true;
+    d->is_charging.v = true;
+    sc_str_set_raw(&d->media_title, tmp);
+    sc_str_set_raw(&d->media_artist, tmp);
+    sc_str_set_raw(&d->media_state, "playing");
+    sc_str_set_raw(&d->foreground_app, tmp);
+    sc_str_set_raw(&d->foreground_app_name, tmp);
+    d->updated_at.has = true;
+    d->updated_at.v = 1794032391;
+    sc_str_set_raw(&d->error, tmp);
+
+    d->has_console = true;
+    d->console.online.has = true;
+    d->console.online.v = true;
+    sc_str_set_raw(&d->console.method, "ping");
+    d->console.last_seen_at.has = true;
+    d->console.last_seen_at.v = 1794032391;
+    sc_str_set_raw(&d->console.mac, tmp);
+    d->console.idle_hint.has = true;
+    d->console.idle_hint.v = true;
+    sc_str_set_raw(&d->console.name, tmp);
+    sc_str_set_raw(&d->console.type, tmp);
+    sc_str_set_raw(&d->console.status_text, tmp);
+
+    d->has_node = true;
+    d->node.ssh.has = true;
+    d->node.ssh.v = true;
+    d->node.online.has = true;
+    d->node.online.v = true;
+    sc_str_set_raw(&d->node.status_text, tmp);
+    sc_str_set_raw(&d->node.method, "ssh");
+    sc_str_set_raw(&d->node.source, "ssh");
+    sc_str_set_raw(&d->node.hostname, tmp);
+    d->node.last_seen_at.has = true;
+    d->node.last_seen_at.v = 1794032391;
+    d->node.uptime_seconds.has = true;
+    d->node.uptime_seconds.v = 999999;
+
+    d->has_transport = true;
+    sc_str_set_raw(&d->transport.active, "usb");
+    d->transport.degraded.has = true;
+    d->transport.degraded.v = false;
+    d->transport.online.has = true;
+    d->transport.online.v = true;
+    d->transport.last_seen_at.has = true;
+    d->transport.last_seen_at.v = 1794032391;
+    sc_str_set_raw(&d->transport.detail, tmp);
+
+    d->has_ble = true;
+    sc_str_set_raw(&d->ble.address, "AA:BB:CC:DD:EE:FF");
+    sc_str_set_raw(&d->ble.name, tmp);
+    d->ble.rssi.has = true;
+    d->ble.rssi.v = -100;
+    for (int k = 0; k < SC_MAX_LIST_ITEMS; ++k) {
+        (void)sc_strlist_add(&d->ble.services, k % 2 ? "heart_rate" : "battery");
+    }
+    d->ble.connected.has = true;
+    d->ble.connected.v = true;
+    d->ble.heart_rate.has = true;
+    d->ble.heart_rate.v = 200;
+    sc_str_set_raw(&d->ble.status_text, tmp);
+    d->ble.last_seen_at.has = true;
+    d->ble.last_seen_at.v = 1794032391;
+
+    d->has_nekotrak = true;
+    sc_str_set_raw(&d->nekotrak.version, tmp);
+    sc_str_set_raw(&d->nekotrak.source, tmp);
+    d->nekotrak.uptime_sec.has = true;
+    d->nekotrak.uptime_sec.v = 999999;
+    sc_str_set_raw(&d->nekotrak.started_at, "2026-11-07T00:00:00.000+08:00");
+    sc_str_set_raw(&d->nekotrak.last_log_at, "2026-11-07T00:00:00.000+08:00");
+    d->nekotrak.tracker_active.has = true;
+    d->nekotrak.tracker_active.v = true;
+    sc_str_set_raw(&d->nekotrak.tracker_started_at, "2026-11-07T00:00:00.000+08:00");
+    sc_str_set_raw(&d->nekotrak.tracker_stopped_at, "2026-11-07T00:00:00.000+08:00");
+    sc_str_set_raw(&d->nekotrak.current_game, tmp);
+    d->nekotrak.current_game_app_id.has = true;
+    d->nekotrak.current_game_app_id.v = 2147483647;
+    fill_fat_nekotrak(d);
+    d->nekotrak.has_pomodoro = true;
+    memset(d->nekotrak.pomodoro_json, 'Q', SC_RAW_JSON_LEN - 1);
+    d->nekotrak.pomodoro_json[0] = '{';
+    d->nekotrak.pomodoro_json[SC_RAW_JSON_LEN - 2] = '}';
+    d->nekotrak.pomodoro_json[SC_RAW_JSON_LEN - 1] = '\0';
+    for (int k = 0; k < SC_MAX_LIST_ITEMS; ++k) {
+        (void)sc_strlist_add(&d->nekotrak.warns, tmp);
+    }
+}
+
+static sc_device_t *append_plain_device(sc_snapshot_t *snap, int i)
+{
+    sc_device_t *d = sc_snapshot_append(snap);
+    if (d == NULL) {
+        return NULL;
+    }
+    char tmp[64];
+    snprintf(tmp, sizeof(tmp), "device-%02d", i);
+    sc_str_set(&d->id, tmp);
+    sc_str_set(&d->platform, "android");
+    sc_str_set(&d->model, "Pixel 7");
+    sc_str_set(&d->media_state, "unknown");
+    d->battery_level.has = true;
+    d->battery_level.v = 42;
+    d->updated_at.has = true;
+    d->updated_at.v = snap->generated_at;
+    return d;
+}
+
+/* BUG-1  Snapshot capacity. SC_MAX_DEVICES is 16 and the firmware renders into
+ * CONFIG_SC_MAX_SNAPSHOT_JSON, which must be at least SC_SNAPSHOT_JSON_BUDGET
+ * (a compile-time assert in app_main.c and http_server.c enforces that half).
+ * This half proves the budget is actually enough for a full device list. */
+static void test_bug_snapshot_capacity(void)
+{
+    sc_snapshot_t snap;
+    sc_snapshot_init(&snap);
+    snap.generated_at = 1794032391;
+    for (int i = 0; i < SC_MAX_DEVICES; ++i) {
+        sc_device_t *d = append_plain_device(&snap, i);
+        if (d == NULL) {
+            break;
+        }
+        fill_fat_nekotrak(d);
+    }
+    static char buf[SC_SNAPSHOT_JSON_BUDGET];
+    size_t len = sc_snapshot_render(&snap, buf, sizeof(buf));
+    if (len == 0) {
+        printf("BUG-1 snapshot capacity: %d devices with maximal nekotrak subtrees do not fit"
+               " the %d-byte budget (needed ~%zu)\n",
+               SC_MAX_DEVICES, SC_SNAPSHOT_JSON_BUDGET, sc_snapshot_render_len(&snap));
+    }
+    CHECK(len != 0);
+    CHECK(snap.count == SC_MAX_DEVICES);
+}
+
+/* BUG-1 (worst case)  Every field of every row at its maximum, every additive
+ * block present. This is the number the budget has to cover, so it is measured
+ * rather than assumed. */
+static void test_worst_case_fits_budget(void)
+{
+    sc_snapshot_t snap;
+    sc_snapshot_init(&snap);
+    snap.generated_at = 1794032391;
+    for (int i = 0; i < SC_MAX_DEVICES; ++i) {
+        sc_device_t *d = sc_snapshot_append(&snap);
+        if (d == NULL) {
+            break;
+        }
+        fill_maximal_device(d, i);
+    }
+    size_t needed = sc_snapshot_render_len(&snap);
+    static char buf[SC_SNAPSHOT_JSON_BUDGET];
+    size_t len = sc_snapshot_render(&snap, buf, sizeof(buf));
+    if (len == 0) {
+        printf("BUG-1 worst case: %d fully populated rows need %zu bytes but the budget is %d;"
+               " raise SC_SNAPSHOT_JSON_BUDGET (core/sc_limits.h) and the Kconfig default\n",
+               SC_MAX_DEVICES, needed, SC_SNAPSHOT_JSON_BUDGET);
+    }
+    CHECK(len != 0);
+    if (len != 0) {
+        printf("(worst case measured: %zu of %d budgeted bytes)\n", len, SC_SNAPSHOT_JSON_BUDGET);
+    }
+}
+
+/* BUG-2  Raw-JSON passthrough: a nekotrak pet/pomodoro subtree whose serialized
+ * form exceeds SC_RAW_JSON_LEN-1 bytes is dropped ENTIRELY -- not truncated, not
+ * flagged. The real pet on the reference machine is already 309 of ~447 bytes,
+ * so ~138 bytes of headroom stand between the current output and silent loss. */
+static void test_bug_raw_passthrough_drop(void)
+{
+    /* pet with a 430-byte tale: serialized subtree is 441 bytes, still kept. */
+    char json[2048];
+    int p = snprintf(json, sizeof(json),
+                     "{\"devices\":[{\"id\":\"nekotrak\",\"platform\":\"windows\","
+                     "\"nekotrak\":{\"version\":\"1.2.0\",\"pet\":{\"tale\":\"");
+    for (int i = 0; i < 440; ++i) { /* one step past the ceiling */
+        json[p++] = 'a';
+    }
+    p += snprintf(json + p, sizeof(json) - (size_t)p, "\"}}}]}");
+    json[p] = '\0';
+
+    sc_alias_table_t al;
+    sc_alias_table_init(&al);
+    sc_device_t rows[SC_MAX_DEVICES];
+    int n = sc_wire_parse_devices(json, strlen(json), &al, rows, SC_MAX_DEVICES);
+    CHECK(n == 1);
+    if (n != 1) {
+        return;
+    }
+    if (!rows[0].nekotrak.has_pet) {
+        printf("BUG-2 raw passthrough: a 440-byte pet tale is silently dropped"
+               " (cap is %d bytes, real pet on the reference box is already 309)\n",
+               SC_RAW_JSON_LEN - 1);
+    }
+    CHECK(rows[0].nekotrak.has_pet);
+}
+
+/* BUG-3  Truncation at SC_STR_LEN splits a UTF-8 sequence, and the escaper then
+ * emits one U+FFFD per leftover byte: a 95-byte cut of 3-byte CJK yields 31 real
+ * characters plus two replacement characters, and a cut of 4-byte emoji yields
+ * three. Output stays valid JSON but the content is corrupted and inflated. */
+static void test_bug_utf8_truncation_mojibake(void)
+{
+    char big[512];
+    int i = 0;
+    for (int k = 0; k < 32; ++k) { /* "日" x32 = 96 bytes, one byte past the store */
+        memcpy(big + i, "\xe6\x97\xa5", 3);
+        i += 3;
+    }
+    big[i] = '\0';
+
+    sc_str_t s;
+    sc_str_clear(&s);
+    sc_str_set(&s, big);
+
+    char esc[512];
+    sc_json_escape(s.v, esc, sizeof(esc));
+    int replaced = 0;
+    for (const char *q = esc; (q = strstr(q, "\\uFFFD")) != NULL; ++q) {
+        replaced += 1;
+    }
+    if (replaced != 0) {
+        printf("BUG-3 utf8 truncation: %d replacement char(s) injected by the 95-byte"
+               " cut; stored tail bytes were a partial UTF-8 sequence\n", replaced);
+    }
+    CHECK(replaced == 0);
+}
+
+/* BUG-4  sc_str_set claims ".NET-style Trim()", but .NET trims every Unicode
+ * whitespace rune while this trims ASCII only. A field of U+00A0 (or U+3000)
+ * therefore stays present here and becomes null on the daemon -- the two
+ * implementations disagree about the same input. */
+static void test_bug_unicode_trim(void)
+{
+    sc_str_t nbsp;
+    sc_str_clear(&nbsp);
+    sc_str_set(&nbsp, "\xc2\xa0\xc2\xa0"); /* NBSP NBSP */
+    if (nbsp.has) {
+        printf("BUG-4 trim: a NBSP-only string stays present (%zu bytes);"
+               " .NET string.Trim() makes it empty -> null\n", strlen(nbsp.v));
+    }
+    CHECK(!nbsp.has);
+
+    sc_str_t wide;
+    sc_str_clear(&wide);
+    sc_str_set(&wide, "\xe3\x80\x80\xe3\x80\x80"); /* U+3000 U+3000 */
+    if (wide.has) {
+        printf("BUG-4 trim: an ideographic-space-only string stays present (%zu bytes);"
+               " .NET trims it\n", strlen(wide.v));
+    }
+    CHECK(!wide.has);
+}
+
+/* BUG-5  /health readiness across the two implementations. sc_health_evaluate_json
+ * is documented as mirroring StatusServer.cs, but it parses with cJSON, which
+ * tolerates trailing garbage. The daemon (System.Text.Json) rejects it. Measured:
+ * '{"devices":[]} trailing' -> daemon 503, firmware 200. */
+static void test_bug_health_trailing_garbage(void)
+{
+    static const char trailing[] = "{\"devices\":[]} trailing";
+    sc_health_t h;
+    memset(&h, 0, sizeof(h));
+    sc_health_evaluate_json(trailing, strlen(trailing), &h);
+    if (h.ok) {
+        printf("BUG-5 health parity: trailing garbage is accepted here but the daemon"
+               " answers 503 for the same body\n");
+    }
+    CHECK(!h.ok);
+}
+
 int main(void)
 {
     test_json_escape();
     test_display_name();
     test_route();
     test_route_budget();
+    test_bug_snapshot_capacity();
+    test_worst_case_fits_budget();
+    test_bug_raw_passthrough_drop();
+    test_bug_utf8_truncation_mojibake();
+    test_bug_unicode_trim();
+    test_bug_health_trailing_garbage();
     test_hysteresis();
     test_health();
     test_snapshot_empty();
