@@ -42,3 +42,9 @@
 
 - [update-announcement-v3.4.0.md](posts/update-announcement-v3.4.0.md)
 - [xiaoheihe-post-v3.4.0.md](posts/xiaoheihe-post-v3.4.0.md)
+
+## 测试报告
+
+[`test-reports/`](test-reports/) 记录实测结论，包括未修好的缺陷：
+
+- [v3.4.0-bug-hunt.md](test-reports/v3.4.0-bug-hunt.md) — 6 个缺陷（固件容量与字符串边界 5 个、daemon 文档面 1 个），含最小复现与失败测试所在分支
