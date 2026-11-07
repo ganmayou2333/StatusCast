@@ -19,6 +19,7 @@
 #include "mem_util.h"
 #include "net/http_server.h"
 #include "net/wifi_sta.h"
+#include "sc_limits.h"
 #include "sc_snapshot.h"
 #include "sensors/dht20.h"
 #include "storage/config_store.h"
@@ -178,6 +179,10 @@ void app_main(void)
     log_ring_init();
     audit_init();
 
+    /* Bounded at compile time against the whole device list: see sc_limits.h. */
+    _Static_assert(CONFIG_SC_MAX_SNAPSHOT_JSON >= SC_SNAPSHOT_JSON_BUDGET,
+                   "SC_MAX_SNAPSHOT_JSON cannot hold SC_MAX_DEVICES fully populated rows "
+                   "(core/sc_limits.h); a round that does not fit publishes nothing");
     s_json_capacity = (size_t)CONFIG_SC_MAX_SNAPSHOT_JSON;
     s_snapshot = (sc_snapshot_t *)sc_psram_alloc(sizeof(sc_snapshot_t));
     s_json = (char *)sc_psram_alloc(s_json_capacity);

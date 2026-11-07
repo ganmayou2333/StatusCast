@@ -89,28 +89,30 @@ static void take_list(const cJSON *object, const char *key, sc_strlist_t *target
 }
 
 /* pet/pomodoro are opaque JSON subtrees in the daemon (cloned as JsonElement).
- * We re-print them compactly; if they do not fit the fixed buffer we drop the
- * member instead of embedding a truncated (invalid) subtree. */
-static void take_raw_object(const cJSON *object, const char *key, bool *has, char *buf, size_t cap)
+ * We re-print them compactly; if they do not fit the fixed buffer the member is
+ * dropped instead of embedding a truncated (invalid) subtree. Returns true when
+ * that happened, so the caller can say so instead of losing the data silently. */
+static bool take_raw_object(const cJSON *object, const char *key, bool *has, char *buf, size_t cap)
 {
     *has = false;
     buf[0] = '\0';
     const cJSON *item = get(object, key);
     if (item == NULL || !cJSON_IsObject(item)) {
-        return;
+        return false;
     }
     char *printed = cJSON_PrintUnformatted(item);
     if (printed == NULL) {
-        return;
+        return true;
     }
     size_t length = strlen(printed);
     if (length >= cap) {
         free(printed);
-        return;
+        return true;
     }
     memcpy(buf, printed, length + 1);
     free(printed);
     *has = true;
+    return false;
 }
 
 static void parse_console(const cJSON *object, sc_console_block_t *block)
@@ -170,10 +172,22 @@ static void parse_nekotrak(const cJSON *object, sc_nekotrak_block_t *block)
     take_str(object, "trackerStoppedAt", &block->tracker_stopped_at);
     take_str(object, "currentGame", &block->current_game);
     take_i32(object, "currentGameAppId", &block->current_game_app_id);
-    take_raw_object(object, "pet", &block->has_pet, block->pet_json, sizeof(block->pet_json));
-    take_raw_object(object, "pomodoro", &block->has_pomodoro, block->pomodoro_json,
-                    sizeof(block->pomodoro_json));
+
+    /* Borrow the daemon's own warns channel instead of dropping the payload in
+     * silence: a consumer that never sees `pet` can at least see why. The flags
+     * are collected before take_list() because that call resets the list. */
+    bool pet_overflowed = take_raw_object(object, "pet", &block->has_pet,
+                                          block->pet_json, sizeof(block->pet_json));
+    bool pomodoro_overflowed = take_raw_object(object, "pomodoro", &block->has_pomodoro,
+                                               block->pomodoro_json,
+                                               sizeof(block->pomodoro_json));
     take_list(object, "warns", &block->warns);
+    if (pet_overflowed) {
+        (void)sc_strlist_add(&block->warns, "nekotrak.pet 超出缓冲已省略");
+    }
+    if (pomodoro_overflowed) {
+        (void)sc_strlist_add(&block->warns, "nekotrak.pomodoro 超出缓冲已省略");
+    }
 }
 
 static void parse_device(const cJSON *row, const sc_alias_table_t *aliases, sc_device_t *device)

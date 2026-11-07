@@ -22,7 +22,12 @@
 #define SC_MAX_BLE_DEVICES 8
 #define SC_MAX_TCP_PORTS 8
 #define SC_MAX_LIST_ITEMS 6
-#define SC_RAW_JSON_LEN 448
+/* Room for one re-printed nekotrak passthrough subtree (pet / pomodoro).
+ * Sized from reality, not from a round number: the reference machine's pet is
+ * already 309 bytes, so 448 left only ~138 bytes of headroom before the subtree
+ * was dropped silently. Anything that still does not fit is reported through
+ * nekotrak.warns rather than disappearing. */
+#define SC_RAW_JSON_LEN 512
 #define SC_MAX_CONFIG_ERRORS 12
 /* console_collector semantics: two consecutive failures mark a host offline,
  * a single success brings it straight back online. */

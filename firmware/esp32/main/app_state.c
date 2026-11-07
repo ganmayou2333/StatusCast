@@ -281,7 +281,7 @@ const char *app_state_i2c_list(char *out, size_t cap)
     if (out == NULL || cap == 0) {
         return "";
     }
-    out[0] = '\\0';
+    out[0] = '\0';
     state_lock();
     size_t used = 0;
     for (int i = 0; i < s_i2c_count; ++i) {

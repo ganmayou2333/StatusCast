@@ -8,13 +8,24 @@
 #include "esp_log.h"
 
 #include "app_state.h"
+#include "mem_util.h"
+#include "sc_limits.h"
 #include "sc_route_counts.h"
 #include "ui/status_led.h"
 #include "control/control_api.h"
 
 static const char *TAG = "sc_http";
 
-#define SC_BODY_MAX 8192
+/* The /status/ body copy buffer. It must be able to hold whatever the render
+ * buffer produced, so it is derived from the same Kconfig value instead of
+ * repeating a literal: two independent 8192s used to mean that raising the
+ * snapshot budget above 8192 would silently turn every /status/ response into
+ * "not ready" while /health kept reporting healthy. */
+#define SC_BODY_MAX ((size_t)CONFIG_SC_MAX_SNAPSHOT_JSON)
+_Static_assert(CONFIG_SC_MAX_SNAPSHOT_JSON > 0, "SC_MAX_SNAPSHOT_JSON must be > 0");
+_Static_assert(CONFIG_SC_MAX_SNAPSHOT_JSON >= SC_SNAPSHOT_JSON_BUDGET,
+               "SC_MAX_SNAPSHOT_JSON is smaller than SC_SNAPSHOT_JSON_BUDGET (core/sc_limits.h): "
+               "a full device list would not fit, and the round would publish nothing");
 
 static const char BODY_NOT_READY[] = "{\"error\":\"status snapshot not ready\"}";
 static const char BODY_NOT_FOUND[] = "{\"error\":\"not found\"}";
@@ -43,7 +54,9 @@ static esp_err_t handle_status(httpd_req_t *req)
     if (!app_state_ready()) {
         return respond_literal(req, "503 Service Unavailable", BODY_NOT_READY);
     }
-    char *body = (char *)malloc(SC_BODY_MAX);
+    /* From PSRAM, not internal heap: the budget is tens of kilobytes and the
+     * internal heap has to keep room for the WiFi/BLE stacks. */
+    char *body = (char *)sc_psram_alloc(SC_BODY_MAX);
     if (body == NULL) {
         ESP_LOGE(TAG, "out of memory building /status/ response");
         return respond_literal(req, "503 Service Unavailable", BODY_NOT_READY);

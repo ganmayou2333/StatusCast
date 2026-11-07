@@ -45,6 +45,17 @@ menu "StatusCast ESP32"
 
     config SC_MAX_SNAPSHOT_JSON
         int "Snapshot JSON buffer size in bytes"
-        default 8192
+        range 73728 262144
+        default 73728
+        help
+            Size of the rendered snapshot body, used both for rendering and for
+            the /status/ response copy.
+
+            Must be at least SC_SNAPSHOT_JSON_BUDGET in core/sc_limits.h; the build
+            fails if it is not. The budget is measured, not guessed: 16 rows with
+            every field at its maximum need 65,985 bytes. The old 8192 fit only 8
+            such rows, and a round that does not fit renders nothing at all - the
+            board then serves the previous round's snapshot forever while /health
+            keeps reporting it as current.
 
 endmenu

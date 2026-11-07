@@ -13,6 +13,7 @@
 #include "cJSON.h"
 #include "sc_core.h"
 #include "sc_json.h"
+#include "sc_limits.h"
 #include "sc_route_counts.h"
 #include "sc_snapshot.h"
 #include "sc_wire_parse.h"
@@ -713,13 +714,11 @@ static void test_route_budget(void)
 }
 
 /* ============================================================================
- * Known-bug probes -- EXPECTED TO FAIL until the underlying defects are fixed.
+ * Regression guards for the defects found in the v3.4.0 bug hunt.
  *
- * Each one encodes a behaviour the documentation promises and the code does not
- * deliver. They live here (rather than nowhere) so the argument is executable:
- * run the suite and watch exactly these assertions go red.
- *
- * See docs/test-reports/v3.4.0-bug-hunt.md for the measurements behind them.
+ * Each of these was red against the code as shipped in v3.4.0; they exist so the
+ * fixed behaviour cannot silently regress. See
+ * docs/test-reports/v3.4.0-bug-hunt.md for the measurements that motivated them.
  * ========================================================================= */
 
 /* Fill a device with the largest nekotrak raw subtree the model allows, which is
@@ -733,6 +732,110 @@ static void fill_fat_nekotrak(sc_device_t *d)
     d->nekotrak.pet_json[0] = '{';
     d->nekotrak.pet_json[SC_RAW_JSON_LEN - 2] = '}';
     d->nekotrak.pet_json[SC_RAW_JSON_LEN - 1] = '\0';
+}
+
+/* Every string at its maximum, every block present: the true worst case a single
+ * row can contribute. */
+static void fill_maximal_device(sc_device_t *d, int i)
+{
+    char tmp[SC_STR_LEN];
+    memset(tmp, 'M', sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+
+    snprintf(d->id.v, SC_STR_LEN, "device-%02d", i);
+    d->id.has = true;
+    sc_str_set_raw(&d->platform, "android");
+    sc_str_set_raw(&d->model, tmp);
+    sc_str_set_raw(&d->display_name, tmp);
+    d->battery_level.has = true;
+    d->battery_level.v = 100;
+    d->is_charging.has = true;
+    d->is_charging.v = true;
+    sc_str_set_raw(&d->media_title, tmp);
+    sc_str_set_raw(&d->media_artist, tmp);
+    sc_str_set_raw(&d->media_state, "playing");
+    sc_str_set_raw(&d->foreground_app, tmp);
+    sc_str_set_raw(&d->foreground_app_name, tmp);
+    d->updated_at.has = true;
+    d->updated_at.v = 1794032391;
+    sc_str_set_raw(&d->error, tmp);
+
+    d->has_console = true;
+    d->console.online.has = true;
+    d->console.online.v = true;
+    sc_str_set_raw(&d->console.method, "ping");
+    d->console.last_seen_at.has = true;
+    d->console.last_seen_at.v = 1794032391;
+    sc_str_set_raw(&d->console.mac, tmp);
+    d->console.idle_hint.has = true;
+    d->console.idle_hint.v = true;
+    sc_str_set_raw(&d->console.name, tmp);
+    sc_str_set_raw(&d->console.type, tmp);
+    sc_str_set_raw(&d->console.status_text, tmp);
+
+    d->has_node = true;
+    d->node.ssh.has = true;
+    d->node.ssh.v = true;
+    d->node.online.has = true;
+    d->node.online.v = true;
+    sc_str_set_raw(&d->node.status_text, tmp);
+    sc_str_set_raw(&d->node.method, "ssh");
+    sc_str_set_raw(&d->node.source, "ssh");
+    sc_str_set_raw(&d->node.hostname, tmp);
+    d->node.last_seen_at.has = true;
+    d->node.last_seen_at.v = 1794032391;
+    d->node.uptime_seconds.has = true;
+    d->node.uptime_seconds.v = 999999;
+
+    d->has_transport = true;
+    sc_str_set_raw(&d->transport.active, "usb");
+    d->transport.degraded.has = true;
+    d->transport.degraded.v = false;
+    d->transport.online.has = true;
+    d->transport.online.v = true;
+    d->transport.last_seen_at.has = true;
+    d->transport.last_seen_at.v = 1794032391;
+    sc_str_set_raw(&d->transport.detail, tmp);
+
+    d->has_ble = true;
+    sc_str_set_raw(&d->ble.address, "AA:BB:CC:DD:EE:FF");
+    sc_str_set_raw(&d->ble.name, tmp);
+    d->ble.rssi.has = true;
+    d->ble.rssi.v = -100;
+    for (int k = 0; k < SC_MAX_LIST_ITEMS; ++k) {
+        (void)sc_strlist_add(&d->ble.services, k % 2 ? "heart_rate" : "battery");
+    }
+    d->ble.connected.has = true;
+    d->ble.connected.v = true;
+    d->ble.heart_rate.has = true;
+    d->ble.heart_rate.v = 200;
+    sc_str_set_raw(&d->ble.status_text, tmp);
+    d->ble.last_seen_at.has = true;
+    d->ble.last_seen_at.v = 1794032391;
+
+    d->has_nekotrak = true;
+    sc_str_set_raw(&d->nekotrak.version, tmp);
+    sc_str_set_raw(&d->nekotrak.source, tmp);
+    d->nekotrak.uptime_sec.has = true;
+    d->nekotrak.uptime_sec.v = 999999;
+    sc_str_set_raw(&d->nekotrak.started_at, "2026-11-07T00:00:00.000+08:00");
+    sc_str_set_raw(&d->nekotrak.last_log_at, "2026-11-07T00:00:00.000+08:00");
+    d->nekotrak.tracker_active.has = true;
+    d->nekotrak.tracker_active.v = true;
+    sc_str_set_raw(&d->nekotrak.tracker_started_at, "2026-11-07T00:00:00.000+08:00");
+    sc_str_set_raw(&d->nekotrak.tracker_stopped_at, "2026-11-07T00:00:00.000+08:00");
+    sc_str_set_raw(&d->nekotrak.current_game, tmp);
+    d->nekotrak.current_game_app_id.has = true;
+    d->nekotrak.current_game_app_id.v = 2147483647;
+    fill_fat_nekotrak(d);
+    d->nekotrak.has_pomodoro = true;
+    memset(d->nekotrak.pomodoro_json, 'Q', SC_RAW_JSON_LEN - 1);
+    d->nekotrak.pomodoro_json[0] = '{';
+    d->nekotrak.pomodoro_json[SC_RAW_JSON_LEN - 2] = '}';
+    d->nekotrak.pomodoro_json[SC_RAW_JSON_LEN - 1] = '\0';
+    for (int k = 0; k < SC_MAX_LIST_ITEMS; ++k) {
+        (void)sc_strlist_add(&d->nekotrak.warns, tmp);
+    }
 }
 
 static sc_device_t *append_plain_device(sc_snapshot_t *snap, int i)
@@ -754,31 +857,60 @@ static sc_device_t *append_plain_device(sc_snapshot_t *snap, int i)
     return d;
 }
 
-/* BUG-1  Snapshot capacity: SC_MAX_DEVICES is 16, but the firmware renders into
- * CONFIG_SC_MAX_SNAPSHOT_JSON (8192) bytes. Measured: 8 fat devices fit (7737),
- * 9 do not (8698). At 9+ sc_snapshot_render() returns 0, app_main logs and
- * publishes nothing, so the board serves the previous round forever (or 503 at
- * boot) while /health keeps claiming the old device count. */
+/* BUG-1  Snapshot capacity. SC_MAX_DEVICES is 16 and the firmware renders into
+ * CONFIG_SC_MAX_SNAPSHOT_JSON, which must be at least SC_SNAPSHOT_JSON_BUDGET
+ * (a compile-time assert in app_main.c and http_server.c enforces that half).
+ * This half proves the budget is actually enough for a full device list. */
 static void test_bug_snapshot_capacity(void)
 {
     sc_snapshot_t snap;
     sc_snapshot_init(&snap);
     snap.generated_at = 1794032391;
-    for (int i = 0; i < 9; ++i) {
+    for (int i = 0; i < SC_MAX_DEVICES; ++i) {
         sc_device_t *d = append_plain_device(&snap, i);
         if (d == NULL) {
             break;
         }
         fill_fat_nekotrak(d);
     }
-    static char buf[8192]; /* exactly CONFIG_SC_MAX_SNAPSHOT_JSON */
+    static char buf[SC_SNAPSHOT_JSON_BUDGET];
     size_t len = sc_snapshot_render(&snap, buf, sizeof(buf));
     if (len == 0) {
-        printf("BUG-1 snapshot capacity: 9 devices do not fit the %zu-byte render buffer"
-               " (needed ~%zu) -> the round never publishes\n",
-               sizeof(buf), sc_snapshot_render_len(&snap));
+        printf("BUG-1 snapshot capacity: %d devices with maximal nekotrak subtrees do not fit"
+               " the %d-byte budget (needed ~%zu)\n",
+               SC_MAX_DEVICES, SC_SNAPSHOT_JSON_BUDGET, sc_snapshot_render_len(&snap));
     }
     CHECK(len != 0);
+    CHECK(snap.count == SC_MAX_DEVICES);
+}
+
+/* BUG-1 (worst case)  Every field of every row at its maximum, every additive
+ * block present. This is the number the budget has to cover, so it is measured
+ * rather than assumed. */
+static void test_worst_case_fits_budget(void)
+{
+    sc_snapshot_t snap;
+    sc_snapshot_init(&snap);
+    snap.generated_at = 1794032391;
+    for (int i = 0; i < SC_MAX_DEVICES; ++i) {
+        sc_device_t *d = sc_snapshot_append(&snap);
+        if (d == NULL) {
+            break;
+        }
+        fill_maximal_device(d, i);
+    }
+    size_t needed = sc_snapshot_render_len(&snap);
+    static char buf[SC_SNAPSHOT_JSON_BUDGET];
+    size_t len = sc_snapshot_render(&snap, buf, sizeof(buf));
+    if (len == 0) {
+        printf("BUG-1 worst case: %d fully populated rows need %zu bytes but the budget is %d;"
+               " raise SC_SNAPSHOT_JSON_BUDGET (core/sc_limits.h) and the Kconfig default\n",
+               SC_MAX_DEVICES, needed, SC_SNAPSHOT_JSON_BUDGET);
+    }
+    CHECK(len != 0);
+    if (len != 0) {
+        printf("(worst case measured: %zu of %d budgeted bytes)\n", len, SC_SNAPSHOT_JSON_BUDGET);
+    }
 }
 
 /* BUG-2  Raw-JSON passthrough: a nekotrak pet/pomodoro subtree whose serialized
@@ -894,6 +1026,7 @@ int main(void)
     test_route();
     test_route_budget();
     test_bug_snapshot_capacity();
+    test_worst_case_fits_budget();
     test_bug_raw_passthrough_drop();
     test_bug_utf8_truncation_mojibake();
     test_bug_unicode_trim();
