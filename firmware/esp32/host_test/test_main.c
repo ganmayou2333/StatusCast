@@ -712,12 +712,192 @@ static void test_route_budget(void)
           SC_HTTP_SPECIFIC_ROUTES + SC_CONTROL_ROUTE_COUNT + SC_HTTP_CATCHALL_ROUTES);
 }
 
+/* ============================================================================
+ * Known-bug probes -- EXPECTED TO FAIL until the underlying defects are fixed.
+ *
+ * Each one encodes a behaviour the documentation promises and the code does not
+ * deliver. They live here (rather than nowhere) so the argument is executable:
+ * run the suite and watch exactly these assertions go red.
+ *
+ * See docs/test-reports/v3.4.0-bug-hunt.md for the measurements behind them.
+ * ========================================================================= */
+
+/* Fill a device with the largest nekotrak raw subtree the model allows, which is
+ * what a chatty NekoTrak pet produces in practice. */
+static void fill_fat_nekotrak(sc_device_t *d)
+{
+    d->has_nekotrak = true;
+    sc_str_set(&d->nekotrak.version, "1.2.0");
+    d->nekotrak.has_pet = true;
+    memset(d->nekotrak.pet_json, 'P', SC_RAW_JSON_LEN - 1);
+    d->nekotrak.pet_json[0] = '{';
+    d->nekotrak.pet_json[SC_RAW_JSON_LEN - 2] = '}';
+    d->nekotrak.pet_json[SC_RAW_JSON_LEN - 1] = '\0';
+}
+
+static sc_device_t *append_plain_device(sc_snapshot_t *snap, int i)
+{
+    sc_device_t *d = sc_snapshot_append(snap);
+    if (d == NULL) {
+        return NULL;
+    }
+    char tmp[64];
+    snprintf(tmp, sizeof(tmp), "device-%02d", i);
+    sc_str_set(&d->id, tmp);
+    sc_str_set(&d->platform, "android");
+    sc_str_set(&d->model, "Pixel 7");
+    sc_str_set(&d->media_state, "unknown");
+    d->battery_level.has = true;
+    d->battery_level.v = 42;
+    d->updated_at.has = true;
+    d->updated_at.v = snap->generated_at;
+    return d;
+}
+
+/* BUG-1  Snapshot capacity: SC_MAX_DEVICES is 16, but the firmware renders into
+ * CONFIG_SC_MAX_SNAPSHOT_JSON (8192) bytes. Measured: 8 fat devices fit (7737),
+ * 9 do not (8698). At 9+ sc_snapshot_render() returns 0, app_main logs and
+ * publishes nothing, so the board serves the previous round forever (or 503 at
+ * boot) while /health keeps claiming the old device count. */
+static void test_bug_snapshot_capacity(void)
+{
+    sc_snapshot_t snap;
+    sc_snapshot_init(&snap);
+    snap.generated_at = 1794032391;
+    for (int i = 0; i < 9; ++i) {
+        sc_device_t *d = append_plain_device(&snap, i);
+        if (d == NULL) {
+            break;
+        }
+        fill_fat_nekotrak(d);
+    }
+    static char buf[8192]; /* exactly CONFIG_SC_MAX_SNAPSHOT_JSON */
+    size_t len = sc_snapshot_render(&snap, buf, sizeof(buf));
+    if (len == 0) {
+        printf("BUG-1 snapshot capacity: 9 devices do not fit the %zu-byte render buffer"
+               " (needed ~%zu) -> the round never publishes\n",
+               sizeof(buf), sc_snapshot_render_len(&snap));
+    }
+    CHECK(len != 0);
+}
+
+/* BUG-2  Raw-JSON passthrough: a nekotrak pet/pomodoro subtree whose serialized
+ * form exceeds SC_RAW_JSON_LEN-1 bytes is dropped ENTIRELY -- not truncated, not
+ * flagged. The real pet on the reference machine is already 309 of ~447 bytes,
+ * so ~138 bytes of headroom stand between the current output and silent loss. */
+static void test_bug_raw_passthrough_drop(void)
+{
+    /* pet with a 430-byte tale: serialized subtree is 441 bytes, still kept. */
+    char json[2048];
+    int p = snprintf(json, sizeof(json),
+                     "{\"devices\":[{\"id\":\"nekotrak\",\"platform\":\"windows\","
+                     "\"nekotrak\":{\"version\":\"1.2.0\",\"pet\":{\"tale\":\"");
+    for (int i = 0; i < 440; ++i) { /* one step past the ceiling */
+        json[p++] = 'a';
+    }
+    p += snprintf(json + p, sizeof(json) - (size_t)p, "\"}}}]}");
+    json[p] = '\0';
+
+    sc_alias_table_t al;
+    sc_alias_table_init(&al);
+    sc_device_t rows[SC_MAX_DEVICES];
+    int n = sc_wire_parse_devices(json, strlen(json), &al, rows, SC_MAX_DEVICES);
+    CHECK(n == 1);
+    if (n != 1) {
+        return;
+    }
+    if (!rows[0].nekotrak.has_pet) {
+        printf("BUG-2 raw passthrough: a 440-byte pet tale is silently dropped"
+               " (cap is %d bytes, real pet on the reference box is already 309)\n",
+               SC_RAW_JSON_LEN - 1);
+    }
+    CHECK(rows[0].nekotrak.has_pet);
+}
+
+/* BUG-3  Truncation at SC_STR_LEN splits a UTF-8 sequence, and the escaper then
+ * emits one U+FFFD per leftover byte: a 95-byte cut of 3-byte CJK yields 31 real
+ * characters plus two replacement characters, and a cut of 4-byte emoji yields
+ * three. Output stays valid JSON but the content is corrupted and inflated. */
+static void test_bug_utf8_truncation_mojibake(void)
+{
+    char big[512];
+    int i = 0;
+    for (int k = 0; k < 32; ++k) { /* "日" x32 = 96 bytes, one byte past the store */
+        memcpy(big + i, "\xe6\x97\xa5", 3);
+        i += 3;
+    }
+    big[i] = '\0';
+
+    sc_str_t s;
+    sc_str_clear(&s);
+    sc_str_set(&s, big);
+
+    char esc[512];
+    sc_json_escape(s.v, esc, sizeof(esc));
+    int replaced = 0;
+    for (const char *q = esc; (q = strstr(q, "\\uFFFD")) != NULL; ++q) {
+        replaced += 1;
+    }
+    if (replaced != 0) {
+        printf("BUG-3 utf8 truncation: %d replacement char(s) injected by the 95-byte"
+               " cut; stored tail bytes were a partial UTF-8 sequence\n", replaced);
+    }
+    CHECK(replaced == 0);
+}
+
+/* BUG-4  sc_str_set claims ".NET-style Trim()", but .NET trims every Unicode
+ * whitespace rune while this trims ASCII only. A field of U+00A0 (or U+3000)
+ * therefore stays present here and becomes null on the daemon -- the two
+ * implementations disagree about the same input. */
+static void test_bug_unicode_trim(void)
+{
+    sc_str_t nbsp;
+    sc_str_clear(&nbsp);
+    sc_str_set(&nbsp, "\xc2\xa0\xc2\xa0"); /* NBSP NBSP */
+    if (nbsp.has) {
+        printf("BUG-4 trim: a NBSP-only string stays present (%zu bytes);"
+               " .NET string.Trim() makes it empty -> null\n", strlen(nbsp.v));
+    }
+    CHECK(!nbsp.has);
+
+    sc_str_t wide;
+    sc_str_clear(&wide);
+    sc_str_set(&wide, "\xe3\x80\x80\xe3\x80\x80"); /* U+3000 U+3000 */
+    if (wide.has) {
+        printf("BUG-4 trim: an ideographic-space-only string stays present (%zu bytes);"
+               " .NET trims it\n", strlen(wide.v));
+    }
+    CHECK(!wide.has);
+}
+
+/* BUG-5  /health readiness across the two implementations. sc_health_evaluate_json
+ * is documented as mirroring StatusServer.cs, but it parses with cJSON, which
+ * tolerates trailing garbage. The daemon (System.Text.Json) rejects it. Measured:
+ * '{"devices":[]} trailing' -> daemon 503, firmware 200. */
+static void test_bug_health_trailing_garbage(void)
+{
+    static const char trailing[] = "{\"devices\":[]} trailing";
+    sc_health_t h;
+    memset(&h, 0, sizeof(h));
+    sc_health_evaluate_json(trailing, strlen(trailing), &h);
+    if (h.ok) {
+        printf("BUG-5 health parity: trailing garbage is accepted here but the daemon"
+               " answers 503 for the same body\n");
+    }
+    CHECK(!h.ok);
+}
+
 int main(void)
 {
     test_json_escape();
     test_display_name();
     test_route();
     test_route_budget();
+    test_bug_snapshot_capacity();
+    test_bug_raw_passthrough_drop();
+    test_bug_utf8_truncation_mojibake();
+    test_bug_unicode_trim();
+    test_bug_health_trailing_garbage();
     test_hysteresis();
     test_health();
     test_snapshot_empty();
