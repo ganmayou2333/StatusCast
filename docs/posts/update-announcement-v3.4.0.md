@@ -78,16 +78,16 @@
 ## 需要你注意的行为变化
 
 1. **主机离线不再写 `error`**：`error` 保持 `null`，离线状态看 `console.online=false`，文案在 `console.statusText`。自己写消费者的话请改读这两个字段；NekoTool 已适配。
-2. **`GET /health` 现在真的存在**：返回 `{"status":"ok","snapshotReady":true|false}`，可用于探活（此前启动日志里写了但没注册）。
+2. **`GET /health` 现在真的存在**：就绪时返回 `{"ok":true,"deviceCount":N,"generatedAt":G,"schema":3}`，未就绪返回 503 且 `ok:false`，可用于探活（此前启动日志里写了但没注册）。
 3. **`STATUSCAST_ROOT` 变严格**：显式设置的根目录里没有 `status_core.py` 时，daemon 会明确报「找不到项目根目录」，不再悄悄爬到别的目录去采错配置。
 4. **schema 仍是 3**：所有改动均为加法字段，旧消费者忽略未知字段即可，配置文件向后兼容。
 
 ## 工程与可维护性
 
-- **测试**：Python 170 项（全离线）、C# 41 项（解析/投影/路由/`/health`/回退），CI 双流水线分别跑。
+- **测试**：Python 195 项（全离线）、C# 43 项（解析/投影/路由/`/health`/回退），CI 双流水线分别跑。
 - **契约**：`schema/status-contract.json` 成为 schema-3 字段的唯一事实源，Python 与 C# 两侧测试同时校验，字段漂移会直接失败。
 - **可测性**：`error_entry()` 统一了错误条目形状；路由逻辑抽成纯函数；`InternalsVisibleTo` 让 daemon 内部逻辑可被测试。
-- **文档**：新增 C0 真机联调台账，明确标注哪些项目尚未在真实设备上验证。
+- **文档**：真机未验项统一登记在本文「已知限制」与 GitHub Issues（原计划的 `docs/C1-C2b-C0-checklist.md` 未落地）。
 
 ## 升级须知
 
@@ -111,7 +111,7 @@
 - **iPhone Wi-Fi 采集仍不可用**：当前 Apple 服务下 `diagnostics_relay` 会被设备断开；实验开关默认关闭，仅保留代码与研究记录。
 - **主机只分"在线/离线"**：L0 无法区分「在玩」和「挂机」，`console.idleHint` 恒为 `true`，更细的展示留到下一阶段（C3）。
 - **PS1 / OBS 展示本轮只加了主机行**：蓝牙与降级信息目前只进 JSON，展示打磨在 C3。
-- **真机联调项未全部验证**：ARP 缓存消失时间、真实 MAC/WOL、known_hosts 首次连接、Linux 多电池、macOS `pmset` 各状态、BLE 真实读数等，均记录在 `docs/C1-C2b-C0-checklist.md`，完成 C0 后逐项勾选。
+- **真机联调项未全部验证**：ARP 缓存消失时间、真实 MAC/WOL、known_hosts 首次连接、Linux 多电池、macOS `pmset` 各状态、BLE 真实读数等，逐项登记在 GitHub Issues 与本文「已知限制」中。
 
 ## 下一步
 
@@ -141,13 +141,13 @@
 - schema 仍为 3，配置向后兼容
 
 ### 质量
-- Python 170 项离线测试 + C# 41 项测试，CI 双流水线
+- Python 195 项离线测试 + C# 43 项测试，CI 双流水线
 - `schema/status-contract.json` 作为字段唯一事实源
 
 ### 注意
 - 升级后执行 `pip install -r requirements.txt`（已声明 `bleak`）
 - iPhone Wi-Fi 采集仍不可用，实验开关默认关闭
-- 真机项见 `docs/C1-C2b-C0-checklist.md`
+- 真机未验项见 GitHub Issues
 ```
 
 ---
@@ -157,5 +157,5 @@
 - [ ] 将 `src/StatusCast.Daemon/StatusCast.Daemon.csproj` 的 `<Version>` 从 `3.3.0` 升到 `3.4.0`
 - [ ] `CHANGELOG.md` 的 `[Unreleased]` 改为 `[3.4.0] - 2026-11-01`
 - [ ] NekoTool 的 `CHANGELOG.md` 同步版本号（若一起发版）
-- [ ] 打 tag `v3.4.0`（release 工作流会以 `CHANGELOG.md` 作为 release body）
+- [ ] 打 tag `v3.4.0`（release 工作流只取 `CHANGELOG.md` 里本次版本那一节作为 release body）
 - [ ] 在装有真实手机/主机/节点的机器上跑一遍 C0 清单，勾掉已验证项
