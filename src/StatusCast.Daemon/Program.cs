@@ -23,7 +23,15 @@ internal static class Program
         var root = ProjectLocator.FindRoot() ?? AppContext.BaseDirectory;
         var config = StatusCastConfig.Load(root);
 
-        Log("SYSTEM", "StatusCast Core v3.3.0 启动", ConsoleColor.Cyan);
+        // Read the version instead of hardcoding it: the banner used to say v3.3.0
+        // long after <Version> moved, and UpdateChecker compares against the
+        // assembly version, so a stale banner is a lie users can read.
+        var assemblyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        var versionText = assemblyVersion is null
+            ? "?"
+            : $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}";
+
+        Log("SYSTEM", $"StatusCast Core v{versionText} 启动", ConsoleColor.Cyan);
         Log("SYSTEM", $"纯后台采集引擎 · 轮询间隔 {config.RefreshInterval.TotalSeconds:0} 秒", ConsoleColor.DarkGray);
 
         // Fire-and-forget: the GitHub Release check must never block startup.
