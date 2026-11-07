@@ -43,8 +43,11 @@ Display:   SSD1315 128×64, I2C, SSD1306 兼容指令集
 | SCL | **GPIO9** | **J1 pin 14** |
 | SDA | **GPIO8** | **J1 pin 11** |
 
-> 不要接 5V：模块逻辑电平会跟着 VCC 走，5V 上拉对 ESP32 不安全。板载 WS2812 的数据脚是
-> **GPIO48**（本版未驱动，留作状态灯）。
+> 不要接 5V：模块逻辑电平会跟着 VCC 走，5V 上拉对 ESP32 不安全。
+
+**板载状态灯**：WS2812 数据脚 **GPIO48**，已驱动。四种状态由主循环计算：绿=正常、琥珀=降级（有 `读取超时` 条目）、红=WiFi 断开或严重错误、灭=未启动。也可以用 `POST /control/led` 手动覆盖（只存在 RAM，重启即失效）。见 [ESP32 控制面](../../docs/guide/control-api.md)。
+
+**板载温湿度**：DHT20 在 I2C `0x38`，与 OLED 共用总线（SDA=GPIO8 / SCL=GPIO9）。每轮采一次，出现在 `GET /diag` 的 `sensor` 字段和屏幕总览页。读不到只是 `ok:false`，不影响其它功能。没有对应的配置键。
 
 > 地址 `0x3C`，驱动会自动探测 `0x3D`。屏不是硬依赖：初始化失败只打日志，采集与 HTTP 照常。
 
@@ -126,6 +129,7 @@ idf.py -p COM3 -b 460800 flash monitor
 | `net scan` | 扫描 2.4GHz 热点（ESP32-S3 无 5GHz 射频） |
 | `cfg dump` | 打印 LittleFS 里原始的 `config.json` |
 | `ble scan` | 扫描附近 BLE 广播（含地址/RSSI/名称） |
+| `i2c scan` | 扫描 I2C 总线上的地址（排查 OLED / DHT20 接线） |
 
 **WiFi 凭据只存 NVS**，不写 LittleFS、不进仓库、不进日志。
 
@@ -141,13 +145,30 @@ idf.py -p COM3 -b 460800 flash monitor
 
 ## HTTP API（与 daemon 兼容）
 
+**只读面（无需鉴权）**
+
 - `GET /status/` → 200 快照；未就绪 → 503 `{"error":"status snapshot not ready"}`
 - `GET /health` → 200 `{"ok":true,"deviceCount":N,"generatedAt":G,"schema":3}`；未就绪 → 503 四键全 null
+- `GET /diag` → 200 只读诊断：`{"deviceCount","generatedAt","roundMillis","i2c":[…],"sensor":{"ok","temperatureC","humidityPct"},"led"}`；未就绪 → 503
 - 非 GET（含未知路径）→ 405 `{"error":"method not allowed"}`；其余路径 → 404 `{"error":"not found"}`
 - 响应头固定带 `Access-Control-Allow-Origin: *`、`Cache-Control: no-store`、
   `Content-Type: application/json; charset=utf-8`
 - 设备行 13 键顺序固定，加法对象按 `console → node → transport → ble → nekotrak` 追加，
   缺失时整键省略；非 ASCII 一律 `\uXXXX` 转义（PS 5.1 零乱码）
+
+**控制面（需要 `X-StatusCast-Token`）**
+
+`/control/` 下有十个鉴权路由，能重启板子、改写配置、轮换令牌、读日志与 coredump：
+
+```text
+GET    /control/status      GET    /control/scan       GET  /control/log
+POST   /control/reboot      POST   /control/config     GET  /control/audit
+POST   /control/led         POST   /control/token      GET  /control/coredump
+DELETE /control/coredump
+```
+
+完整路由表、请求体、状态码与**安全边界**见 [docs/guide/control-api.md](../../docs/guide/control-api.md)。
+默认令牌是公开的 `statuscast`，走明文 HTTP——上线前必须轮换。
 
 ### PC 数据源（iPhone / Android / NekoTrak）
 
@@ -167,15 +188,16 @@ python .\tools\pc_feed_relay.py --listen-port 5100
 中继只转发 `GET /status/` 与 `GET /health`，其余方法返回 405；daemon 停掉时 ESP32 会按
 daemon 的 stale 语义把 PC 条目标成 `读取超时`（电量清空、`transport` 丢弃、`nekotrak` 保留）。
 
-NekoTool 接入：
+NekoTool 接入（脚本在 NekoTool 仓库里，不在固件目录下）：
 
 ```powershell
+cd G:\StatusCast\NekoTool
 .\scripts\ultimate_status.ps1 -StatusUrl http://<esp32-ip>:5099/status/
 ```
 
 ## 与 daemon 的有意差异
 
-1. **绑 `0.0.0.0`**（daemon 只绑 loopback）——这是固件存在的意义；局域网内无鉴权，见 `SECURITY.md`。
+1. **绑 `0.0.0.0`**（daemon 只绑 loopback）——这是固件存在的意义。只读面（`/status/` `/health` `/diag`）**无鉴权**；`/control/*` **需要 `X-StatusCast-Token`**，且走明文 HTTP、无速率限制、无重放防护。信任边界见 [SECURITY.md](../../SECURITY.md)。
 2. **快照是紧凑 JSON**（daemon 是 2 空格缩进 + CRLF + 尾无换行）。只影响空白字节，不影响语义。
 3. **探测链没有 ARP**（lwIP 无 `SendARP` 等价 API），`console.method` 只会是 `ping` / `tcp`。
 4. **没有 freshness 窗口**（与 daemon 一致：`/health` 不比对时钟）。
@@ -187,8 +209,9 @@ NekoTool 接入：
 
 | 现象 | 处理 |
 | --- | --- |
-| `idf.py: command not found` | 先跑 `.\tools\build.ps1`，它会 source `export.ps1` |
+| `idf.py: command not found` | 先跑 `.\tools\build.bat build`，它会 source `export.ps1` |
 | 串口打不开 / `Failed to connect` | 确认设备管理器里是 CH343 的 COM 口，烧录时按一下 BOOT 再试 |
-| 屏全黑 | 检查 SDA/SCL 与地址（`0x3C`/`0x3D`），看串口是否有 I2C 初始化日志 |
+| 屏全黑 | 检查 SDA/SCL 与地址（`0x3C`/`0x3D`），用串口 `i2c scan` 确认能看到 `0x3C`/`0x38` |
+| `/control/audit`、`/control/coredump` 返回 404 | 旧固件的 handler 表槽位不足，升级到含 `f889d92` 的版本重新烧录 |
 | `/status/` 一直 503 | 看串口是否 WiFi 未连上 / 第一轮采集未完成 |
-| 手机条目全空 | `PcFeed.enabled` 是否为 true、URL 是否指向 PC daemon |
+| 手机条目全空 | `PcFeed.enabled` 是否为 true、URL 是否指向 PC daemon（或 `pc_feed_relay.py`） |
