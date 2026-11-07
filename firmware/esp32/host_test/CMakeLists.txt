@@ -6,14 +6,19 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # The core sources are compiled twice in this repo: once into the firmware and
 # once here. They deliberately have no ESP-IDF dependency.
+#
+# Keep this list in sync with tools/host-test.ps1 -- both are documented ways to
+# run the same suite, and a missing source here only shows up as a link error.
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../main/core)
 
 add_executable(sc_host_test
     test_main.c
     ${CORE_DIR}/sc_core.c
     ${CORE_DIR}/sc_config.c
+    ${CORE_DIR}/sc_display.c
     ${CORE_DIR}/sc_json.c
     ${CORE_DIR}/sc_snapshot.c
+    ${CORE_DIR}/sc_wire_parse.c
     ${CORE_DIR}/vendor/cjson/cJSON.c
 )
 

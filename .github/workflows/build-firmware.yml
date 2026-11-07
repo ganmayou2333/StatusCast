@@ -1,0 +1,47 @@
+name: build-firmware
+
+# Full ESP-IDF builds are slow (multi-minute image pull plus a cold toolchain
+# build), so they do not run on every PR. They run when a release tag is pushed
+# and on demand, which is enough to catch "the firmware stopped compiling".
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      # 5.5.x line; bump together with firmware/esp32/README.md's documented version.
+      image: espressif/idf:release-v5.5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build firmware
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware/esp32
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Report size
+        shell: bash
+        run: |
+          ls -l firmware/esp32/build/statuscast_esp32.bin
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: statuscast_esp32
+          path: |
+            firmware/esp32/build/statuscast_esp32.bin
+            firmware/esp32/build/bootloader/bootloader.bin
+            firmware/esp32/build/partition_table/partition-table.bin
+          if-no-files-found: error

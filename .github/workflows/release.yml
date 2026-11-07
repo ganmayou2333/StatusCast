@@ -15,11 +15,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # `body_path: CHANGELOG.md` used to paste the entire changelog, every past
+      # release included, into each release. Take only this version's section.
+      - name: Extract release notes for this version
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = re.compile(
+              rf"^## \[{re.escape(tag)}\][^\n]*\n(.*?)(?=^## |\Z)", re.M | re.S
+          )
+          match = pattern.search(text)
+          body = match.group(1).strip() if match else ""
+          if not body:
+              sys.exit(f"no '## [{tag}]' section in CHANGELOG.md")
+          pathlib.Path("release-notes.md").write_text(body + "\n", encoding="utf-8")
+          print(f"release notes: {len(body)} chars for {tag}")
+          PY
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: StatusCast ${{ github.ref_name }}
-          body_path: CHANGELOG.md
+          body_path: release-notes.md
           tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: false

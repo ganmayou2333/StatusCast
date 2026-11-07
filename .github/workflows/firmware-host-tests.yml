@@ -1,0 +1,39 @@
+name: firmware-host-tests
+
+# The firmware's contract core (main/core/) is deliberately ESP-IDF-free, so the
+# whole suite compiles with a plain host compiler. That is what makes it possible
+# to guard the wire contract without a board attached.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/esp32/**"
+      - "schema/status-contract.json"
+      - ".github/workflows/firmware-host-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "firmware/esp32/**"
+      - "schema/status-contract.json"
+      - ".github/workflows/firmware-host-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S firmware/esp32/host_test -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run
+        working-directory: build
+        run: ctest --output-on-failure

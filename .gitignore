@@ -1,4 +1,4 @@
-# =========================
+﻿# =========================
 # Python
 # =========================
 .venv/
@@ -98,6 +98,7 @@ firmware/esp32/managed_components/
 firmware/esp32/sdkconfig
 firmware/esp32/sdkconfig.old
 firmware/esp32/host_test/build/
+firmware/esp32/host_test/build-ci/
 
 # =========================
 # Local design notes
