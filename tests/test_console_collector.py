@@ -300,6 +300,157 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(state["xbox"]["failStreak"], 0)
 
 
+class StateBoundedTests(unittest.TestCase):
+    """The persisted hysteresis state stays bounded (streak clamp + pruning)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.state = Path(tmp.name) / "console_state.json"
+
+    def test_fail_streak_is_clamped_at_the_offline_limit(self):
+        with mock.patch.object(cc, "arp_probe", return_value=(True, None)):
+            make(self.state).get_data()
+        with mock.patch.object(cc, "arp_probe", return_value=(False, None)), \
+             mock.patch.object(cc, "ping_probe", return_value=False), \
+             mock.patch.object(cc, "tcp_probe", return_value=(False, None)):
+            for _ in range(6):
+                entry = make(self.state).get_data()
+        self.assertIsNone(entry["error"])
+        self.assertFalse(entry["console"]["online"])
+        self.assertEqual(cc.FAILS_TO_OFFLINE, 2)
+        self.assertEqual(
+            read_state(self.state)["ps5"]["failStreak"], cc.FAILS_TO_OFFLINE
+        )
+
+    def test_success_resets_a_clamped_streak(self):
+        with mock.patch.object(cc, "arp_probe", return_value=(False, None)), \
+             mock.patch.object(cc, "ping_probe", return_value=False), \
+             mock.patch.object(cc, "tcp_probe", return_value=(False, None)):
+            for _ in range(4):
+                make(self.state).get_data()
+        self.assertEqual(read_state(self.state)["ps5"]["failStreak"], 2)
+        with mock.patch.object(cc, "arp_probe", return_value=(True, None)):
+            entry = make(self.state).get_data()
+        self.assertIsNone(entry["error"])
+        self.assertTrue(entry["console"]["online"])
+        self.assertEqual(read_state(self.state)["ps5"]["failStreak"], 0)
+
+    def test_inflated_stored_streak_is_clamped_on_write(self):
+        self.state.write_text(
+            json.dumps(
+                {
+                    "ps5": {
+                        "ip": "192.0.2.10",
+                        "online": True,
+                        "failStreak": 99,
+                        "lastSeenAt": 900,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with mock.patch.object(cc, "arp_probe", return_value=(False, None)), \
+             mock.patch.object(cc, "ping_probe", return_value=False), \
+             mock.patch.object(cc, "tcp_probe", return_value=(False, None)):
+            entry = make(self.state).get_data()
+        self.assertIsNone(entry["error"])
+        self.assertFalse(entry["console"]["online"])
+        self.assertEqual(read_state(self.state)["ps5"]["failStreak"], 2)
+
+    def test_stale_console_is_pruned_while_live_ones_are_kept(self):
+        self.state.write_text(
+            json.dumps(
+                {
+                    "ps5": {
+                        "ip": "192.0.2.10",
+                        "online": True,
+                        "failStreak": 0,
+                        "lastSeenAt": 900,
+                    },
+                    "xbox": {
+                        "ip": "192.0.2.11",
+                        "online": True,
+                        "failStreak": 1,
+                        "lastSeenAt": 800,
+                    },
+                    "ghost": {
+                        "ip": "192.0.2.99",
+                        "online": False,
+                        "failStreak": 2,
+                        "lastSeenAt": 700,
+                    },
+                    # Not a console record: another writer's key must survive.
+                    "note": {"version": 1},
+                }
+            ),
+            encoding="utf-8",
+        )
+        with mock.patch.object(cc, "arp_probe", return_value=(True, None)):
+            entry = cc.ConsoleCollector(
+                ENTRY,
+                state_path=self.state,
+                now=1000,
+                live_ids={"ps5", "xbox"},
+            ).get_data()
+        self.assertIsNone(entry["error"])
+        state = read_state(self.state)
+        self.assertEqual(set(state), {"ps5", "xbox", "note"})
+        self.assertEqual(state["ps5"]["lastSeenAt"], 1000)
+        # A live sibling's record is preserved, not rewritten by this device.
+        self.assertEqual(
+            state["xbox"],
+            {
+                "ip": "192.0.2.11",
+                "online": True,
+                "failStreak": 1,
+                "lastSeenAt": 800,
+            },
+        )
+        self.assertEqual(state["note"], {"version": 1})
+
+    def test_without_live_ids_no_record_is_pruned(self):
+        # Direct construction (not through the dispatcher) keeps every record:
+        # pruning only happens when the caller says which ids are configured.
+        self.state.write_text(
+            json.dumps({"ghost": {"failStreak": 2, "online": False}}),
+            encoding="utf-8",
+        )
+        with mock.patch.object(cc, "arp_probe", return_value=(True, None)):
+            make(self.state).get_data()
+        self.assertIn("ghost", read_state(self.state))
+
+    def test_corrupt_state_file_does_not_raise(self):
+        self.state.write_text("{not json", encoding="utf-8")
+        with mock.patch.object(cc, "arp_probe", return_value=(True, None)):
+            entry = cc.ConsoleCollector(
+                ENTRY, state_path=self.state, now=1000, live_ids={"ps5"}
+            ).get_data()
+        self.assertIsNone(entry["error"])
+        self.assertTrue(entry["console"]["online"])
+        self.assertEqual(read_state(self.state)["ps5"]["failStreak"], 0)
+
+    def test_unreadable_state_path_does_not_raise(self):
+        # A directory where the file should be fails both the read and the
+        # atomic replace; the collector still reports the device normally.
+        self.state.mkdir()
+        with mock.patch.object(cc, "arp_probe", return_value=(True, None)):
+            entry = cc.ConsoleCollector(
+                ENTRY, state_path=self.state, now=1000, live_ids={"ps5"}
+            ).get_data()
+        self.assertIsNone(entry["error"])
+        self.assertTrue(entry["console"]["online"])
+
+    def test_non_object_record_does_not_raise(self):
+        self.state.write_text(json.dumps({"ps5": 5}), encoding="utf-8")
+        with mock.patch.object(cc, "arp_probe", return_value=(False, None)), \
+             mock.patch.object(cc, "ping_probe", return_value=False), \
+             mock.patch.object(cc, "tcp_probe", return_value=(False, None)):
+            entry = make(self.state).get_data()
+        self.assertIsNone(entry["error"])
+        self.assertEqual(read_state(self.state)["ps5"]["failStreak"], 1)
+
+
 class PingProbeTests(unittest.TestCase):
     def test_ping_probe_parses_completed_process(self):
         ok = mock.Mock(returncode=0, stdout="Pinging 1.2.3.4 with 32 bytes of data:\nttl=64")

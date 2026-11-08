@@ -12,7 +12,7 @@ from unittest import mock
 
 import status_core
 from collectors import console_collector as cc
-from collectors.base import BaseCollector, CollectorError
+from collectors.base import BaseCollector, CollectorError, error_entry
 
 
 class BoomCollector(BaseCollector):
@@ -83,11 +83,11 @@ class FakeCollector(BaseCollector):
         }
 
 
-def run_with_collectors(collectors):
+def run_with_collectors(collectors, **kwargs):
     with mock.patch.object(
         status_core, "build_collectors", return_value=(collectors, [])
     ):
-        return status_core.collect_all(config={})
+        return status_core.collect_all(config={}, **kwargs)
 
 
 class LoadConfigTests(unittest.TestCase):
@@ -315,6 +315,137 @@ class BatchingTests(unittest.TestCase):
     def test_empty_collector_list_produces_no_devices(self):
         payload = run_with_collectors([])
         self.assertEqual(payload["devices"], [])
+
+
+class RoundBudgetTests(unittest.TestCase):
+    """R4: one slow collector degrades its own device, not the whole round.
+
+    A running collector is never cancelled (its own per-call timeouts bound it),
+    so the budget only decides whether a collector *starts*. Batching is narrowed
+    to one collector per batch here so the order in which the checks fire is
+    deterministic instead of depending on eight-way thread startup; that is the
+    same ordering a config with more than eight devices produces in production.
+    """
+
+    def setUp(self):
+        patch = mock.patch.object(status_core, "MAX_PARALLEL_COLLECTORS", 1)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_slow_collector_is_one_budget_row_and_fast_one_survives(self):
+        recorder = Recorder()
+        collectors = [
+            FakeCollector("fast", delay=0.0, recorder=recorder),
+            FakeCollector("blocker", delay=0.25, recorder=recorder),
+            FakeCollector("slow", delay=2.0, recorder=recorder),
+        ]
+        payload = run_with_collectors(collectors, budget_seconds=0.15)
+        self.assertEqual(
+            [device["id"] for device in payload["devices"]],
+            ["fast", "blocker", "slow"],
+        )
+        rows = {device["id"]: device for device in payload["devices"]}
+        # Finished rows are untouched.
+        self.assertIsNone(rows["fast"]["error"])
+        self.assertEqual(rows["fast"]["model"], "fast")
+        # The one that started while the budget still held is allowed to finish,
+        # even though it overruns the deadline.
+        self.assertIsNone(rows["blocker"]["error"])
+        self.assertEqual(rows["blocker"]["model"], "blocker")
+        # The one that never got its turn is exactly one attributable error row.
+        skipped = rows["slow"]
+        self.assertEqual(skipped["error"], status_core.BUDGET_EXHAUSTED_MESSAGE)
+        self.assertEqual(skipped["platform"], "linux")
+        self.assertEqual(skipped["id"], "slow")
+        self.assertEqual(skipped["transport"]["active"], "none")
+        self.assertFalse(skipped["transport"]["online"])
+        # "Skipped" means it never started: a 2 s sleep would blow this test up.
+        self.assertNotIn("slow", [name for name, _ in recorder.starts])
+
+    def test_generous_budget_skips_nothing(self):
+        recorder = Recorder()
+        collectors = [
+            FakeCollector(f"g{i}", delay=0.01, recorder=recorder) for i in range(5)
+        ]
+        payload = run_with_collectors(collectors, budget_seconds=30)
+        self.assertEqual(
+            [device["id"] for device in payload["devices"]],
+            [f"g{i}" for i in range(5)],
+        )
+        self.assertEqual(
+            [device["error"] for device in payload["devices"]],
+            [None] * len(collectors),
+        )
+        self.assertEqual(
+            {name for name, _ in recorder.starts}, {f"g{i}" for i in range(5)}
+        )
+
+    def test_snapshot_shape_is_unchanged(self):
+        collectors = [
+            FakeCollector("blocker", delay=0.2),
+            FakeCollector("slow", delay=2.0),
+        ]
+        payload = run_with_collectors(collectors, budget_seconds=0.1)
+        self.assertEqual(set(payload), {"schema", "generatedAt", "devices"})
+        self.assertEqual(payload["schema"], 3)
+        self.assertIsInstance(payload["generatedAt"], int)
+        self.assertEqual(
+            payload["devices"][1]["error"], status_core.BUDGET_EXHAUSTED_MESSAGE
+        )
+        # Partial data + error rows still conform to the schema-3 device shape.
+        expected = set(error_entry("linux", "x", "x"))
+        for device in payload["devices"]:
+            self.assertLessEqual(set(device), expected, device["id"])
+        # ...and the budget row is exactly the standard error-entry shape.
+        self.assertEqual(set(payload["devices"][1]), expected)
+        json.dumps(payload, ensure_ascii=False)
+
+    def test_deadline_is_checked_before_the_collector_starts(self):
+        recorder = Recorder()
+        collector = FakeCollector("late", delay=0.0, recorder=recorder)
+        row = status_core._run_or_skip(collector, deadline=time.monotonic() - 1)
+        self.assertEqual(row["error"], status_core.BUDGET_EXHAUSTED_MESSAGE)
+        self.assertEqual(
+            (row["id"], row["platform"]), (collector.device_id, collector.platform)
+        )
+        self.assertEqual(recorder.starts, [])  # it never ran
+        # The same collector still runs while the budget lasts.
+        live = status_core._run_or_skip(collector, deadline=time.monotonic() + 5)
+        self.assertIsNone(live["error"])
+        self.assertEqual(len(recorder.starts), 1)
+
+    def test_default_budget_stays_under_the_daemon_kill(self):
+        self.assertEqual(status_core.ROUND_BUDGET_SECONDS, 25)
+        self.assertLess(status_core.ROUND_BUDGET_SECONDS, 30)
+
+
+class ConsoleStateWiringTests(unittest.TestCase):
+    """The dispatcher tells each console collector which ids are still configured."""
+
+    def setUp(self):
+        nekotrak = mock.patch.object(
+            status_core, "nekotrak_available", return_value=False
+        )
+        nekotrak.start()
+        self.addCleanup(nekotrak.stop)
+
+    def test_build_collectors_passes_the_live_console_ids(self):
+        collectors, invalid = status_core.build_collectors(
+            {
+                "Consoles": [
+                    {"id": "ps5", "ip": "192.0.2.10"},
+                    {"id": "xbox", "ip": "192.0.2.11"},
+                ],
+                "SshNodes": [
+                    {"id": "n", "user": "u", "host": "h", "platform": "linux"}
+                ],
+            }
+        )
+        consoles = [c for c in collectors if c.platform == "console"]
+        self.assertEqual([c.device_id for c in consoles], ["ps5", "xbox"])
+        self.assertEqual(consoles[0].live_ids, {"ps5", "xbox"})
+        self.assertEqual(consoles[1].live_ids, {"ps5", "xbox"})
+        self.assertEqual(invalid, [])
 
 
 if __name__ == "__main__":
