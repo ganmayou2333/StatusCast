@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import time
 import unittest
 from unittest import mock
 
 from collectors import android_collector as ad
+from collectors.base import BUDGET_EXHAUSTED_MESSAGE
 from collectors.base import CollectorError
 
 EMPTY_DEVICES = "List of devices attached\n\n"
@@ -306,3 +308,50 @@ class FallbackChainTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdbBudgetTests(unittest.TestCase):
+    """An already-started collector cannot be cancelled, so it has to bound its own
+    subprocess calls. One Android attempt can chain ~46 s of timeouts, more than
+    the daemon's 30 s kill, so without this the whole round dies and every device
+    goes stale instead of just this one."""
+
+    def test_no_deadline_means_no_clamp(self):
+        collector, patcher = build()
+        self.addCleanup(patcher.stop)
+        self.assertFalse(collector.out_of_budget())
+        self.assertEqual(collector.budget_timeout(8), 8)
+
+    def test_budget_timeout_clamps_to_remaining(self):
+        collector, patcher = build()
+        self.addCleanup(patcher.stop)
+        collector.deadline = time.monotonic() + 2.0
+        clamped = collector.budget_timeout(8)
+        self.assertLessEqual(clamped, 2.0)
+        self.assertGreater(clamped, 0)
+
+    def test_budget_timeout_raises_when_spent(self):
+        collector, patcher = build()
+        self.addCleanup(patcher.stop)
+        collector.deadline = time.monotonic() - 1.0
+        self.assertTrue(collector.out_of_budget())
+        with self.assertRaises(ad.CollectorError) as ctx:
+            collector.budget_timeout(8)
+        self.assertIn(BUDGET_EXHAUSTED_MESSAGE, str(ctx.exception))
+
+    def test_run_adb_clamps_the_subprocess_timeout(self):
+        collector = ad.AndroidCollector(entry={"ip": "192.168.1.21"})
+        collector.deadline = time.monotonic() + 3.0
+        with mock.patch.object(ad.subprocess, "run") as run:
+            run.return_value = mock.Mock(stdout="List of devices attached\n", returncode=0)
+            collector._run_adb(["devices"], timeout=8, serial=False)
+        self.assertEqual(run.call_count, 1)
+        self.assertLessEqual(run.call_args.kwargs["timeout"], 3.0)
+
+    def test_run_adb_refuses_to_start_when_spent(self):
+        collector = ad.AndroidCollector(entry={"ip": "192.168.1.21"})
+        collector.deadline = time.monotonic() - 1.0
+        with mock.patch.object(ad.subprocess, "run") as run:
+            with self.assertRaises(ad.CollectorError):
+                collector._run_adb(["devices"], timeout=8, serial=False)
+        self.assertEqual(run.call_count, 0, "no subprocess may start once the budget is gone")

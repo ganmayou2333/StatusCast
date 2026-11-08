@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **三处无界等待**：BLE 轮次信号量 `portMAX_DELAY` → 20 s；串口 `cfg put` 粘贴循环
   `portMAX_DELAY`（且 `read<=0` 时无限重试）→ 空闲 60 s 后放弃；`/control/*` 请求体读取
   在 `HTTPD_SOCK_ERR_TIMEOUT` 后无限重试 → 总时长 5 s。这三处是「单轮卡死」的真实入口。
+- **Python 轮次预算**（`ROUND_BUDGET_SECONDS = 25`，低于 daemon 的 30 s 强杀）：
+  在采集器开始前与批次之间检查；未能开始的采集器产出一条
+  `采集预算用尽（本轮未完成）` 错误行，已完成的照常返回。
+  光有这一层不够——Android 采集器排在第二位、一旦启动就可能连出 ~46 s 的 adb 超时，
+  超过 daemon 的 30 s 强杀。所以 `BaseCollector` 新增 `deadline` 属性与
+  `budget_timeout()`，Android 的每次 `_run_adb` 都按剩余预算截断超时、无剩余则直接放弃；
+  预算耗尽时跳过可选媒体采集。实测：预算 0.001 s 时 0.001 s 返回完整 schema-3 快照，
+  而不是进程被杀、所有设备变 stale。
+- **`run/console_state.json` 有界**：`failStreak` 钳到 2（`FAILS_TO_OFFLINE`，原为字面量 2）
+  且成功时归零；不在 `config.json` 里的主机在写入时被清理（只删本采集器自有字段的记录，
+  外来键保留）；存储值非法不再抛异常。
 - **PC 侧护栏**（`Services/MemoryGuard.cs`）：每 10 轮记一行
   `[MEM] private=… MB threads=… handles=…`；private > 96 MB、线程 > 64、或最近 5 次采样
   单调上升时告警，闩锁至条件解除后重新武装。不新增端点、不改契约。

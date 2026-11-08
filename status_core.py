@@ -71,8 +71,10 @@ MAX_PARALLEL_COLLECTORS = 8
 # row per device that never started, instead of being killed as a whole.
 ROUND_BUDGET_SECONDS = 25
 
-# ``error`` text for a device the round budget no longer covers.
-BUDGET_EXHAUSTED_MESSAGE = "采集预算用尽（本轮未完成）"
+# ``error`` text for a device the round budget no longer covers. Defined in
+# collectors.base so a collector can use the same wording without importing the
+# dispatcher.
+from collectors.base import BUDGET_EXHAUSTED_MESSAGE  # noqa: E402
 
 
 def load_config(config_path: str | Path | None = None) -> dict[str, Any]:
@@ -215,6 +217,28 @@ def run_collector(collector: Any) -> dict[str, Any]:
         return payload
 
 
+def _hand_out_deadline(collectors: list[Any], deadline: float | None) -> None:
+    """Give every collector the round deadline so a long-running one can bound
+    itself.
+
+    Checking the budget only between collectors is not enough: a collector that
+    has already started cannot be cancelled, and one Android attempt can chain
+    ~46 s of subprocess timeouts -- more than the daemon's own 30 s kill. The
+    deadline is handed out as an attribute rather than a call argument so
+    ``BaseCollector.get_data()`` keeps its signature for third-party collectors.
+    """
+    for collector in collectors:
+        # Declaring `deadline` is the opt-in: BaseCollector always does, so the
+        # check never injects attributes into a third-party collector that did
+        # not ask for one.
+        if not hasattr(collector, "deadline"):
+            continue
+        try:
+            collector.deadline = deadline
+        except AttributeError:
+            pass  # read-only property; the collector bounds itself
+
+
 def _budget_spent(deadline: float | None) -> bool:
     """True once the round deadline has passed (``None`` means no deadline)."""
     return deadline is not None and time.monotonic() >= deadline
@@ -283,9 +307,8 @@ def collect_all(
     cfg = load_config() if config is None else config
     collectors, invalid = build_collectors(cfg, adb=adb, serial=serial)
 
-    devices = (
-        _run_collectors(collectors, deadline=deadline) if collectors else []
-    )
+    _hand_out_deadline(collectors, deadline)
+    devices = _run_collectors(collectors, deadline=deadline) if collectors else []
 
     return {
         "schema": 3,

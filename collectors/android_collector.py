@@ -193,7 +193,12 @@ class AndroidCollector(BaseCollector):
             model = self._get_model()
             level, charging = self._get_battery()
             app = self._get_foreground_app()
-            title, artist, media_state = self._get_media()
+            if self.out_of_budget():
+                # Media is the one optional field left; spending the last seconds
+                # on it would cost the round its snapshot entirely.
+                title, artist, media_state = None, None, "unknown"
+            else:
+                title, artist, media_state = self._get_media()
         except CollectorError:
             raise
         except FileNotFoundError as exc:
@@ -259,6 +264,11 @@ class AndroidCollector(BaseCollector):
     def _run_adb(
         self, args: list[str], timeout: int = 8, serial: bool = True
     ) -> str:
+        # Clamp to whatever is left of the round. Without this a single
+        # _collect_primary() can chain five autodefault timeouts (~46 s) -- more
+        # than the daemon's 30 s kill -- and the whole round dies with it,
+        # turning every device stale instead of this one.
+        timeout = self.budget_timeout(timeout)
         command = [self.adb]
         if serial and self.serial:
             command += ["-s", self.serial]

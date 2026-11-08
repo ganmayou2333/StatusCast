@@ -450,3 +450,30 @@ class ConsoleStateWiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeadlineHandoutTests(unittest.TestCase):
+    """The dispatcher must give collectors the deadline, not just check it
+    between them: a collector already running cannot be cancelled."""
+
+    def test_every_collector_receives_the_deadline(self):
+        import status_core as sc
+
+        class Collector:
+            platform = "x"
+            device_id = "x"
+            deadline = None  # declaring it is the opt-in
+
+        made = [Collector(), Collector()]
+        deadline = time.monotonic() + 5
+        sc._hand_out_deadline(made, deadline)
+        for collector in made:
+            self.assertEqual(collector.deadline, deadline)
+
+    def test_objects_without_a_deadline_are_ignored(self):
+        import status_core as sc
+
+        class Odd:
+            __slots__ = ()
+
+        sc._hand_out_deadline([Odd()], time.monotonic() + 5)  # must not raise

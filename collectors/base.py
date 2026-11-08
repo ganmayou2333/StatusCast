@@ -24,8 +24,13 @@ so one missing device never takes down the whole snapshot.
 
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from typing import Any
+
+# ``error`` text for a device the round budget no longer covers. Shared with
+# status_core so there is one wording for "we ran out of time" everywhere.
+BUDGET_EXHAUSTED_MESSAGE = "采集预算用尽（本轮未完成）"
 
 
 class CollectorError(RuntimeError):
@@ -37,6 +42,32 @@ class BaseCollector(ABC):
 
     platform: str = "unknown"
     device_id: str = "unknown"
+
+    # ``time.monotonic()`` deadline for the current round, assigned by the
+    # dispatcher. ``None`` means "no budget", which is what a collector built
+    # directly in a test or by a third party gets.
+    #
+    # Checking this is the difference between bounding when work *starts* and
+    # bounding how long it may run: a collector that has already been handed to a
+    # worker thread cannot be cancelled, so it has to police itself.
+    deadline: float | None = None
+
+    def out_of_budget(self) -> bool:
+        """True when this collector has no time left in the round."""
+        return self.deadline is not None and time.monotonic() >= self.deadline
+
+    def budget_timeout(self, wanted: float) -> float:
+        """Clamp ``wanted`` seconds to what is left of the round budget.
+
+        Raises :class:`CollectorError` when there is nothing left, so callers
+        stop instead of starting one more subprocess that cannot finish.
+        """
+        if self.deadline is None:
+            return wanted
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise CollectorError(BUDGET_EXHAUSTED_MESSAGE)
+        return min(wanted, remaining)
 
     @abstractmethod
     def get_data(self) -> dict[str, Any]:
