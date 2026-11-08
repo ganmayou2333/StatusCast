@@ -1124,6 +1124,51 @@ static void test_led_unavailable(void)
     CHECK(sc_led_model_shown(&m) == SC_LED_OK);
 }
 
+/* ------------------------------------------------------------ round budget */
+
+/* R1: one round must always be able to finish before the next one starts, and
+ * must always finish inside the 30 s task watchdog. Both bounds are asserted
+ * across the whole configurable period range, because the failure modes are
+ * silent: overlapping rounds stop the snapshot from advancing, and an over-long
+ * round would trip the watchdog and reboot the board. */
+static void test_round_budget(void)
+{
+    CHECK(sc_round_budget_ms(5) == 3000);      /* period - 2 s margin */
+    CHECK(sc_round_budget_ms(6) == 4000);
+    CHECK(sc_round_budget_ms(30) == 25000);    /* capped well below the 30 s period */
+    CHECK(sc_round_budget_ms(60) == 25000);
+    CHECK(sc_round_budget_ms(3600) == 25000);
+
+    /* A period below the clamp still yields a usable budget rather than zero. */
+    CHECK(sc_round_budget_ms(1) == 3000);
+    CHECK(sc_round_budget_ms(0) == 3000);
+
+    /* Invariants over the whole documented range (5..3600). Counted, not
+     * asserted per iteration: 3600 periods would drown the suite's check count. */
+    int violations = 0;
+    for (int period = 1; period <= 3600; ++period) {
+        int64_t budget = sc_round_budget_ms(period);
+        if (budget < 3000 || budget > 25000) {
+            violations += 1;
+        }
+        /* A round must never be allowed to run into the next one. */
+        if (period >= 5 && budget >= (int64_t)period * 1000) {
+            violations += 1;
+        }
+    }
+    if (violations != 0) {
+        printf("round budget: %d period(s) produced an invalid budget\n", violations);
+    }
+    CHECK(violations == 0);
+
+    /* Deadline comparison is inclusive: reaching it counts as expired. */
+    CHECK(!sc_deadline_reached(1000, 999));
+    CHECK(sc_deadline_reached(1000, 1000));
+    CHECK(sc_deadline_reached(1000, 1001));
+    /* A zero deadline is already expired, which is what a starved round sees. */
+    CHECK(sc_deadline_reached(0, 0));
+}
+
 int main(void)
 {
     test_json_escape();
@@ -1141,6 +1186,7 @@ int main(void)
     test_led_manual_override();
     test_led_manual_release_to_off();
     test_led_unavailable();
+    test_round_budget();
     test_hysteresis();
     test_health();
     test_snapshot_empty();

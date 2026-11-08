@@ -54,7 +54,14 @@ static const char *TAG = "sc_ble";
 /* Wall-clock budget for one collector round, measured after the shared scan:
  * the round must stay inside the 30 s refresh budget (4 s scan + 20 s here plus
  * the tail of a device that was already being connected when it expired). */
-#define BLE_ROUND_BUDGET_MS 20000
+/* The BLE stage's own cap, on top of the round deadline. 8 s covers a 4 s scan
+ * plus one connect and read; the round deadline clips it further when LAN or the
+ * PC feed already ate the budget. */
+#define BLE_ROUND_BUDGET_MS 8000
+/* Bound on the state lock. Was portMAX_DELAY: a console scan holding it could
+ * wedge the scheduler task forever, which the watchdog then cannot report
+ * because no task subscribed. */
+#define BLE_LOCK_TIMEOUT_MS 20000
 
 /* Console scan list: bounded storage, names and addresses match the API. */
 #define BLE_SCAN_LIST_MAX 16
@@ -1169,11 +1176,11 @@ void ble_collector_init(void)
 
 /* -------------------------------------------------------------- public API */
 
-int ble_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now)
+int ble_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now,
+                      int64_t deadline_ms)
 {
     int count;
     int appended = 0;
-    int64_t deadline_ms;
 
     if (cfg == NULL || snapshot == NULL) {
         return 0;
@@ -1190,8 +1197,9 @@ int ble_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t n
         return 0;
     }
     /* The console scan uses the same scan state and event bits. */
-    if (xSemaphoreTake(s_ble.lock, portMAX_DELAY) != pdTRUE) {
-        ESP_LOGW(TAG, "cannot lock the BLE state; skipping the BLE round");
+    if (xSemaphoreTake(s_ble.lock, pdMS_TO_TICKS(BLE_LOCK_TIMEOUT_MS)) != pdTRUE) {
+        ESP_LOGW(TAG, "cannot lock the BLE state within %d ms; skipping the BLE round",
+                 BLE_LOCK_TIMEOUT_MS);
         return 0;
     }
 
@@ -1200,9 +1208,15 @@ int ble_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t n
         ESP_LOGW(TAG, "BLE scan could not be started; every device is reported as 未发现");
     }
 
-    /* The scan has its own 4 s cap; everything after it shares this budget so a
-     * round stays inside the 30 s refresh interval. */
-    deadline_ms = ble_now_ms() + BLE_ROUND_BUDGET_MS;
+    /* The scan has its own 4 s cap; everything after it shares the smaller of
+     * this stage's budget and whatever is left of the round. Never move the
+     * deadline later than the round gave us. */
+    {
+        int64_t stage_cap = ble_now_ms() + BLE_ROUND_BUDGET_MS;
+        if (deadline_ms <= 0 || stage_cap < deadline_ms) {
+            deadline_ms = stage_cap;
+        }
+    }
 
     for (int i = 0; i < count; ++i) {
         sc_device_t *row = sc_snapshot_append(snapshot);

@@ -40,6 +40,10 @@ static const char *TAG = "sc_console";
 #define CONSOLE_UART ((uart_port_t)CONFIG_SC_CONSOLE_UART_NUM)
 #define CONSOLE_LINE_MAX 256
 #define CONSOLE_JSON_MAX 8192
+/* How long `cfg put` waits for the next byte before giving up. Sized so a human
+ * pasting by hand never trips it, but an abandoned paste cannot wedge the console
+ * task for the rest of the uptime. */
+#define PASTE_IDLE_TIMEOUT_MS 60000
 
 static bool s_running;
 
@@ -194,11 +198,15 @@ static int cfg_put_paste(void)
     buffer[0] = '\0';
     con_write("paste config.json, finish with a line containing EOF\r\n");
 
+    /* Bounded idle wait. This loop used to block forever: a paste that was
+     * abandoned mid-way left the console task spinning on portMAX_DELAY, which
+     * nothing could interrupt short of a reset. */
     for (;;) {
         uint8_t ch = 0;
-        int read = uart_read_bytes(CONSOLE_UART, &ch, 1, portMAX_DELAY);
+        int read = uart_read_bytes(CONSOLE_UART, &ch, 1, pdMS_TO_TICKS(PASTE_IDLE_TIMEOUT_MS));
         if (read <= 0) {
-            continue;
+            con_write("\r\npaste timed out, aborted\r\n");
+            return 1;
         }
         if (ch == '\r') {
             continue;

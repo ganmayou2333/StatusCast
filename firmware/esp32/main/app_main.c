@@ -17,6 +17,7 @@
 #include "collectors/pc_bridge.h"
 #include "console/serial_console.h"
 #include "mem_util.h"
+#include "clock_util.h"
 #include "net/http_server.h"
 #include "net/wifi_sta.h"
 #include "sc_limits.h"
@@ -111,9 +112,18 @@ static void run_round(void)
     sc_snapshot_init(s_snapshot);
     s_snapshot->generated_at = now;
 
-    (void)lan_collector_run(cfg, s_snapshot, now);
-    (void)ble_collector_run(cfg, s_snapshot, now);
-    (void)pc_bridge_run(cfg, s_snapshot, now);
+    /* One budget for the whole round: collectors check it between units of work
+     * and publish whatever they finished. Without it the worst case was ~85 s
+     * against a 30 s period, so a slow subnet silently stopped the snapshot from
+     * ever advancing. */
+    const int64_t deadline_ms = sc_mono_ms() + sc_round_budget_ms(cfg->refresh_seconds);
+
+    (void)lan_collector_run(cfg, s_snapshot, now, deadline_ms);
+    (void)sc_wdt_feed();
+    (void)ble_collector_run(cfg, s_snapshot, now, deadline_ms);
+    (void)sc_wdt_feed();
+    (void)pc_bridge_run(cfg, s_snapshot, now, deadline_ms);
+    (void)sc_wdt_feed();
     append_config_errors(s_snapshot, now);
 
     /* Every row carries updatedAt == generatedAt, like the daemon. */
@@ -157,12 +167,21 @@ static void run_round(void)
 static void scheduler_task(void *arg)
 {
     (void)arg;
+    /* Subscribe the scheduler to the task watchdog. Nothing did before, so a
+     * wedged collector was invisible: the idle tasks kept the watchdog happy and
+     * /health went on reporting the last snapshot as current. With PANIC enabled
+     * a real hang now reboots the board instead of silently freezing it. */
+    const esp_err_t wdt_err = esp_task_wdt_add(NULL);
+    if (wdt_err != ESP_OK) {
+        ESP_LOGW(TAG, "task watchdog not subscribed: %s", esp_err_to_name(wdt_err));
+    }
     for (;;) {
         run_round();
         int seconds = app_config()->refresh_seconds;
         if (seconds < 5 || seconds > 3600) {
             seconds = 30;
         }
+        (void)sc_wdt_feed();
         vTaskDelay(pdMS_TO_TICKS((uint32_t)seconds * 1000u));
     }
 }

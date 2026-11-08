@@ -58,14 +58,21 @@ internal static class Program
             shutdown.Cancel();
         };
 
+        // Occupancy guardrail (spec R5): one baseline line every 10 rounds plus a
+        // throttled warning when memory or thread count leaves its envelope.
+        var memoryGuard = new MemoryGuard();
+        var rounds = 0;
+
         try
         {
             await RefreshAsync(coordinator, shutdown.Token);
+            memoryGuard.OnRoundCompleted(++rounds);
 
             using var timer = new PeriodicTimer(config.RefreshInterval);
             while (await timer.WaitForNextTickAsync(shutdown.Token))
             {
                 await RefreshAsync(coordinator, shutdown.Token);
+                memoryGuard.OnRoundCompleted(++rounds);
             }
         }
         catch (OperationCanceledException)

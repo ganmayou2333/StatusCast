@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
 
+### Fixed — 稳定性：轮次预算、看门狗、无界等待（`docs/specs/occupancy-and-stability.md`）
+
+先量化再动手：固件 flash 74% 空闲、DIRAM 56%、Python 单轮 0.51 s、daemon private 14 MB
+且无跨轮增长、发布体积 0.21 MB。**占用不是瓶颈**。真正的缺口在轮次失控：
+
+- **单轮最坏 ≈84.6 s vs 30 s 周期**（LAN 29.6 + BLE 25 + PC ≤30，串行），而 spec 自己
+  写的是「一轮上限 30 秒」。现在每轮计算 `budget = clamp(周期−2s, 3s, 25s)`，
+  LAN 在每台主机与每个 TCP 端口前、BLE 在每台设备前、PC feed 在取数前都按剩余预算收手，
+  **已完成的结果照常发布**。BLE 阶段预算 20 s → 8 s。
+- **看门狗形同虚设**：只查 idle 任务、`PANIC` 未开、没有任何任务订阅——卡死既不记录也不重启，
+  `/health` 继续把旧快照报成最新。现在 `sc_sched` 订阅任务看门狗并在阶段边界喂狗，
+  `CONFIG_ESP_TASK_WDT_PANIC=y` 写入 `sdkconfig.defaults`。**真机重启行为未验证**。
+- **三处无界等待**：BLE 轮次信号量 `portMAX_DELAY` → 20 s；串口 `cfg put` 粘贴循环
+  `portMAX_DELAY`（且 `read<=0` 时无限重试）→ 空闲 60 s 后放弃；`/control/*` 请求体读取
+  在 `HTTPD_SOCK_ERR_TIMEOUT` 后无限重试 → 总时长 5 s。这三处是「单轮卡死」的真实入口。
+- **PC 侧护栏**（`Services/MemoryGuard.cs`）：每 10 轮记一行
+  `[MEM] private=… MB threads=… handles=…`；private > 96 MB、线程 > 64、或最近 5 次采样
+  单调上升时告警，闩锁至条件解除后重新武装。不新增端点、不改契约。
+
+证据口径：R1–R5 通过（host 255 checks / 0 failures、固件构建零告警、C# 63 项通过），
+**小时~天级长时间退化未证明**。
+
 ### Fixed — ESP32 串口工具不再猜端口（issue #5）
 
 - `flash.ps1` / `monitor.ps1` / `serial-command.ps1` 的 `-Port` 默认值从 `COM3` 改成

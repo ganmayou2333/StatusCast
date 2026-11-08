@@ -16,4 +16,8 @@
 void pc_bridge_reset(void);
 
 /* Fetch + merge. Returns the number of rows appended (last-good or stale). */
-int pc_bridge_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now);
+/* Fetch + merge. `deadline_ms` is the round's wall-clock budget (sc_mono_ms
+ * base): the HTTP timeout is clipped to whatever is left of it, so a stalled PC
+ * cannot stretch the round past its period. */
+int pc_bridge_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now,
+                  int64_t deadline_ms);

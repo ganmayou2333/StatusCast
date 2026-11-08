@@ -1,5 +1,7 @@
 #include "lan_collector.h"
 
+#include "clock_util.h"
+
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -149,7 +151,8 @@ static bool tcp_probe(const char *ip, uint16_t port)
     return reachable;
 }
 
-static probe_method_t probe_host(const sc_console_cfg_t *host, uint16_t *matched_port)
+static probe_method_t probe_host(const sc_console_cfg_t *host, uint16_t *matched_port,
+                                 int64_t deadline_ms)
 {
     if (!wifi_is_connected()) {
         return PROBE_METHOD_NONE;
@@ -158,6 +161,13 @@ static probe_method_t probe_host(const sc_console_cfg_t *host, uint16_t *matched
         return PROBE_METHOD_PING;
     }
     for (int i = 0; i < host->tcp_port_count; ++i) {
+        if (sc_deadline_reached(deadline_ms, sc_mono_ms())) {
+            /* Out of budget mid-host: report what we know (nothing answered)
+             * rather than half-probing. Hysteresis treats it like any other
+             * failed round, so a persistently starved host stays offline. */
+            ESP_LOGW(TAG, "lan %s: round budget spent; skipping remaining ports", host->id.v);
+            return PROBE_METHOD_NONE;
+        }
         if (tcp_probe(host->ip.v, host->tcp_ports[i])) {
             if (matched_port != NULL) {
                 *matched_port = host->tcp_ports[i];
@@ -168,7 +178,8 @@ static probe_method_t probe_host(const sc_console_cfg_t *host, uint16_t *matched
     return PROBE_METHOD_NONE;
 }
 
-int lan_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now)
+int lan_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now,
+                      int64_t deadline_ms)
 {
     if (cfg == NULL || snapshot == NULL) {
         return 0;
@@ -176,6 +187,12 @@ int lan_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t n
     int appended = 0;
 
     for (int index = 0; index < cfg->console_count; ++index) {
+        if (sc_deadline_reached(deadline_ms, sc_mono_ms())) {
+            ESP_LOGW(TAG, "round budget spent; %d console(s) not probed this round",
+                     cfg->console_count - index);
+            break;
+        }
+        (void)sc_wdt_feed();
         const sc_console_cfg_t *host = &cfg->consoles[index];
 
         sc_persist_state_t state;
@@ -192,7 +209,7 @@ int lan_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t n
         };
 
         uint16_t matched_port = 0;
-        probe_method_t method = probe_host(host, &matched_port);
+        probe_method_t method = probe_host(host, &matched_port, deadline_ms);
         bool ok = method != PROBE_METHOD_NONE;
         bool online = sc_hysteresis_apply(&probe, ok, now);
 

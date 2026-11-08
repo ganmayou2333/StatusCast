@@ -14,4 +14,8 @@
 #include "sc_core.h"
 
 /* Append one "console" row per configured host. Returns the number appended. */
-int lan_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now);
+/* Probe every configured console. `deadline_ms` is the round's wall-clock
+ * budget (sc_mono_ms base): once it passes, the remaining hosts and ports are
+ * skipped so a slow subnet cannot stretch the round past its period. */
+int lan_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now,
+                      int64_t deadline_ms);

@@ -48,6 +48,10 @@ CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
 CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=4096
 CONFIG_ESP_TASK_WDT_INIT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+# Reboot instead of only logging: the board is unattended, so a wedged scheduler
+# task is worse than a restart. The scheduler task subscribes to the watchdog and
+# feeds it between collection stages (see app_main.c).
+CONFIG_ESP_TASK_WDT_PANIC=y
 CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

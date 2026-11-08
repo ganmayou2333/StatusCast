@@ -251,6 +251,19 @@ typedef struct {
  * A success resets the failure counter and stamps last_seen_at. */
 bool sc_hysteresis_apply(sc_probe_state_t *state, bool probe_ok, int64_t now);
 
+/* ---------- round budget ---------- */
+
+/* Wall-clock budget for one collection round, derived from the configured
+ * period. Two seconds are held back so a round can never overlap the next one,
+ * and the result is capped so a round always finishes well inside the 30 s task
+ * watchdog. Both bounds are load-bearing: without the margin rounds overlap,
+ * without the cap a long round trips the watchdog and reboots the board. */
+int64_t sc_round_budget_ms(int refresh_seconds);
+
+/* True once `now_ms` has reached `deadline_ms`. Monotonic milliseconds from any
+ * consistent source. */
+bool sc_deadline_reached(int64_t deadline_ms, int64_t now_ms);
+
 /* ---------- config ---------- */
 
 typedef struct {

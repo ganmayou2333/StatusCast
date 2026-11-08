@@ -87,6 +87,12 @@ static bool authorized(httpd_req_t *req)
     return expected[0] != '\0' && strcmp(provided, expected) == 0;
 }
 
+/* Total wall clock allowed for reading one request body. Each individual
+ * httpd_req_recv has the socket timeout, but the retry below used to restart it
+ * indefinitely, so a client that dribbled bytes could hold a handler open for as
+ * long as it liked. */
+#define BODY_READ_TIMEOUT_MS 5000
+
 /* Read the whole request body into `buffer`. Returns the length or -1. */
 static int recv_body(httpd_req_t *req, char *buffer, size_t cap)
 {
@@ -94,7 +100,13 @@ static int recv_body(httpd_req_t *req, char *buffer, size_t cap)
         return -1;
     }
     size_t received = 0;
+    const int64_t started_ms = esp_timer_get_time() / 1000;
     while (received < (size_t)req->content_len) {
+        if (esp_timer_get_time() / 1000 - started_ms > BODY_READ_TIMEOUT_MS) {
+            ESP_LOGW(TAG, "request body not received within %d ms; dropping it",
+                     BODY_READ_TIMEOUT_MS);
+            return -1;
+        }
         int read = httpd_req_recv(req, buffer + received, (size_t)req->content_len - received);
         if (read == HTTPD_SOCK_ERR_TIMEOUT) {
             continue;

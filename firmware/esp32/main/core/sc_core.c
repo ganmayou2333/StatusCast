@@ -465,6 +465,30 @@ void sc_health_evaluate_json(const char *json, size_t len, sc_health_t *out)
     cJSON_Delete(root);
 }
 
+/* ------------------------------------------------------------ round budget */
+
+#define SC_ROUND_MARGIN_MS 2000
+#define SC_ROUND_BUDGET_MIN_MS 3000
+#define SC_ROUND_BUDGET_MAX_MS 25000
+
+int64_t sc_round_budget_ms(int refresh_seconds)
+{
+    int64_t period = (int64_t)refresh_seconds * 1000;
+    int64_t budget = period - SC_ROUND_MARGIN_MS;
+    if (budget < SC_ROUND_BUDGET_MIN_MS) {
+        budget = SC_ROUND_BUDGET_MIN_MS;
+    }
+    if (budget > SC_ROUND_BUDGET_MAX_MS) {
+        budget = SC_ROUND_BUDGET_MAX_MS;
+    }
+    return budget;
+}
+
+bool sc_deadline_reached(int64_t deadline_ms, int64_t now_ms)
+{
+    return now_ms >= deadline_ms;
+}
+
 /* ------------------------------------------------------------- hysteresis */
 
 bool sc_hysteresis_apply(sc_probe_state_t *state, bool probe_ok, int64_t now)

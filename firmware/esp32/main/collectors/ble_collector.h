@@ -30,7 +30,11 @@ void ble_collector_init(void);
  * devices, then per matched device connect/read/subscribe.
  * Appends one sc_device_t per `cfg->ble` entry to `snapshot` (platform "ble"),
  * in config order. `now` is unix seconds. Returns the number of rows appended. */
-int ble_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now);
+/* Sample every configured peripheral. `deadline_ms` is the round's wall-clock
+ * budget (sc_mono_ms base); the BLE stage additionally caps itself at
+ * BLE_ROUND_BUDGET_MS, whichever comes first. */
+int ble_collector_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now,
+                      int64_t deadline_ms);
 
 /* Runs one 4 s scan and lists up to `max` advertising devices.
  * Fills names[i] (ASCII, may be empty), addrs[i] ("AA:BB:CC:DD:EE:FF"), rssi[i].

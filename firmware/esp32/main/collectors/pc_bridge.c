@@ -1,5 +1,7 @@
 #include "pc_bridge.h"
 
+#include "clock_util.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -36,7 +38,7 @@ void pc_bridge_reset(void)
     s_body[0] = '\0';
 }
 
-static bool fetch(const sc_config_t *cfg, size_t *out_len)
+static bool fetch(const sc_config_t *cfg, int64_t timeout_ms, size_t *out_len)
 {
     *out_len = 0;
     if (!cfg->pc_enabled || !cfg->pc_url.has) {
@@ -53,7 +55,7 @@ static bool fetch(const sc_config_t *cfg, size_t *out_len)
     esp_http_client_config_t config = {
         .url = cfg->pc_url.v,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = cfg->pc_timeout_seconds * 1000,
+        .timeout_ms = (int)timeout_ms,
         .disable_auto_redirect = false,
         .buffer_size = 1024,
         .buffer_size_tx = 512,
@@ -111,7 +113,8 @@ static bool fetch(const sc_config_t *cfg, size_t *out_len)
     return false;
 }
 
-int pc_bridge_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now)
+int pc_bridge_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now,
+                  int64_t deadline_ms)
 {
     if (cfg == NULL || snapshot == NULL || !cfg->pc_enabled) {
         return 0;
@@ -120,8 +123,21 @@ int pc_bridge_run(const sc_config_t *cfg, sc_snapshot_t *snapshot, int64_t now)
         return 0;
     }
 
+    /* Clip the configured timeout to whatever is left of the round. A PC that
+     * stops answering must cost the round its remaining budget, not the next
+     * two rounds as well. */
+    int64_t timeout_ms = (int64_t)cfg->pc_timeout_seconds * 1000;
+    int64_t remaining_ms = deadline_ms - sc_mono_ms();
+    if (remaining_ms <= 0) {
+        ESP_LOGW(TAG, "round budget spent; skipping the PC feed this round");
+        remaining_ms = 0;
+        timeout_ms = 0;
+    } else if (remaining_ms < timeout_ms) {
+        timeout_ms = remaining_ms;
+    }
+
     size_t length = 0;
-    if (fetch(cfg, &length)) {
+    if (timeout_ms > 0 && fetch(cfg, timeout_ms, &length)) {
         int parsed = sc_wire_parse_devices(s_body, length, &cfg->aliases, s_last_rows,
                                           SC_MAX_DEVICES);
         if (parsed >= 0) {
