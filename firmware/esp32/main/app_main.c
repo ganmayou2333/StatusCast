@@ -71,17 +71,17 @@ static void append_config_errors(sc_snapshot_t *snapshot, int64_t now)
 
 /* green: everything reported online; amber: something offline/degraded;
  * red: WiFi down or the PC feed fell back to stale rows. */
-static status_led_state_t compute_led_state(const sc_snapshot_t *snapshot)
+static sc_led_state_t compute_led_state(const sc_snapshot_t *snapshot)
 {
     if (!wifi_is_connected()) {
-        return STATUS_LED_ERROR;
+        return SC_LED_ERROR;
     }
     bool degraded = false;
     for (int i = 0; i < snapshot->count; ++i) {
         const sc_device_t *device = &snapshot->devices[i];
         if (device->error.has) {
             if (strstr(device->error.v, "读取超时") != NULL) {
-                return STATUS_LED_ERROR;
+                return SC_LED_ERROR;
             }
             degraded = true;
             continue;
@@ -97,7 +97,7 @@ static status_led_state_t compute_led_state(const sc_snapshot_t *snapshot)
             degraded = true;
         }
     }
-    return degraded ? STATUS_LED_DEGRADED : STATUS_LED_OK;
+    return degraded ? SC_LED_DEGRADED : SC_LED_OK;
 }
 
 static void run_round(void)

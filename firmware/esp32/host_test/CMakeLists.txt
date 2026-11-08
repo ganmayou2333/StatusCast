@@ -17,6 +17,7 @@ add_executable(sc_host_test
     ${CORE_DIR}/sc_config.c
     ${CORE_DIR}/sc_display.c
     ${CORE_DIR}/sc_json.c
+    ${CORE_DIR}/sc_led.c
     ${CORE_DIR}/sc_snapshot.c
     ${CORE_DIR}/sc_wire_parse.c
     ${CORE_DIR}/vendor/cjson/cJSON.c

@@ -59,12 +59,12 @@ X-StatusCast-Token: <当前令牌>
 
 | 方法 | 路径 | 鉴权 | 成功响应 | 其它状态码 |
 | --- | --- | --- | --- | --- |
-| `GET` | `/diag` | 否 | `{"deviceCount":N,"generatedAt":G,"roundMillis":M,"i2c":[…],"sensor":{"ok":bool,"temperatureC":f,"humidityPct":f},"led":"…"}` | 503（快照未就绪） |
+| `GET` | `/diag` | 否 | `{"deviceCount":N,"generatedAt":G,"roundMillis":M,"i2c":[…],"sensor":{"ok":bool,"temperatureC":f,"humidityPct":f},"led":"…","ledMode":"…","ledAvailable":bool}` | 503（快照未就绪） |
 | `GET` | `/control/status` | 是 | 见下 | 401 |
 | `GET` | `/control/scan` | 是 | `{"i2c":["0x3C",…],"ble":[{"address":"…","name":"…","rssi":-52},…]}` | 401、500 |
 | `POST` | `/control/reboot` | 是 | `{"ok":true,"rebootIn":2}` | 401 |
 | `POST` | `/control/config` | 是 | `{"ok":true,"bytes":N,"rollbackInSeconds":90}` | 401、400、500 |
-| `POST` | `/control/led` | 是 | `{"ok":true,"led":"green\|amber\|red\|off\|auto"}` | 401、400 |
+| `POST` | `/control/led` | 是 | `{"ok":true,"led":"green\|amber\|red\|off","ledMode":"auto\|manual"}` | 401、400 |
 | `POST` | `/control/token` | 是 | `{"ok":true}` | 401、400、500 |
 | `GET` | `/control/log` | 是 | `text/plain; charset=utf-8`，最近 ≤128 行 / 16384 字节 | 401 |
 | `GET` | `/control/coredump` | 是 | `application/octet-stream` + `X-Dump-SHA256` / `X-Dump-Size` / `Content-Disposition` | 401、404、500 |
@@ -79,7 +79,8 @@ X-StatusCast-Token: <当前令牌>
 
 ```text
 uptimeSec, wifi{connected,ip,rssi}, devices, generatedAt, roundMillis,
-sensor{ok,temperatureC,humidityPct}, i2c[], led, config{refreshSeconds,consoles,
+sensor{ok,temperatureC,humidityPct}, i2c[], led, ledMode, ledAvailable,
+config{refreshSeconds,consoles,
 bleDevices,aliases,pcFeed,pcUrl}, configRollbackPending
 ```
 
@@ -106,12 +107,24 @@ bleDevices,aliases,pcFeed,pcUrl}, configRollbackPending
 
 | 情况 | 响应 |
 | --- | --- |
-| 成功 | `{"ok":true,"led":"<当前状态>"}` |
+| 成功 | `{"ok":true,"led":"<当前显示的颜色>","ledMode":"auto\|manual"}` |
 | 体为空 | 400 `{"error":"bad request"}` |
 | 未知颜色 | 400 `{"error":"unknown color"}` |
 | 既没 color 也没 auto | 400 `{"error":"color or auto required"}` |
 
-> 手动颜色**只存在 RAM**，重启即失。而且手动覆盖期间 `/control/status` 与 `/diag` 报的 `led` 是 `off`——它们反映自动状态机，不反映手动覆盖。这是已知的表述不一致。
+三个字段含义不同，别混着读：
+
+| 字段 | 含义 |
+| --- | --- |
+| `led` | 像素**此刻实际显示**的颜色：`green` / `amber` / `red` / `off`。手动覆盖期间报的就是覆盖色 |
+| `ledMode` | 谁在做主：`auto`（自动状态机）或 `manual`（`POST /control/led` 覆盖中） |
+| `ledAvailable` | 灯带是否初始化成功；`false` 时像素恒暗，但 `led` 仍反映状态机算出的值 |
+
+`off` 只表示「像素是暗的」，**不表示**「自动控制被挂起」——后者看 `ledMode`。
+
+`{"auto":true}` 会把控制权立刻交还自动状态机，并**当场按当前自动状态重绘**（包括自动状态本身就是 `off` 的情况）。
+
+> 手动颜色**只存在 RAM**，重启即恢复自动控制。
 
 ### `GET /control/log` 与 `GET /control/coredump`
 

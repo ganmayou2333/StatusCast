@@ -13,6 +13,7 @@
 #include "cJSON.h"
 #include "sc_core.h"
 #include "sc_json.h"
+#include "sc_led.h"
 #include "sc_limits.h"
 #include "sc_route_counts.h"
 #include "sc_snapshot.h"
@@ -1019,6 +1020,110 @@ static void test_bug_health_trailing_garbage(void)
     CHECK(!h.ok);
 }
 
+/* ---------------------------------------------------------------- status LED */
+
+/* The palette and the name mapping are the two things NekoTool and the docs
+ * depend on, and they used to live inside an ESP-IDF-only file. */
+static void test_led_palette(void)
+{
+    uint8_t r, g, b;
+    sc_led_rgb(SC_LED_OFF, &r, &g, &b);
+    CHECK(r == 0 && g == 0 && b == 0);
+    sc_led_rgb(SC_LED_OK, &r, &g, &b);
+    CHECK(r == 0 && g > 0 && b == 0);
+    sc_led_rgb(SC_LED_DEGRADED, &r, &g, &b);
+    CHECK(r > 0 && g > 0 && b == 0);
+    CHECK(g > r); /* amber, not yellow-white */
+    sc_led_rgb(SC_LED_ERROR, &r, &g, &b);
+    CHECK(r > 0 && g == 0 && b == 0);
+
+    CHECK_STR(sc_led_name(SC_LED_OFF), "off");
+    CHECK_STR(sc_led_name(SC_LED_OK), "green");
+    CHECK_STR(sc_led_name(SC_LED_DEGRADED), "amber");
+    CHECK_STR(sc_led_name(SC_LED_ERROR), "red");
+
+    /* NULL out-params are tolerated: the painter always passes all three. */
+    sc_led_rgb(SC_LED_OK, NULL, NULL, NULL);
+}
+
+/* POST /control/led accepts exactly these four spellings. */
+static void test_led_name_parsing(void)
+{
+    sc_led_state_t state = SC_LED_OFF;
+    CHECK(sc_led_state_from_name("green", &state) && state == SC_LED_OK);
+    CHECK(sc_led_state_from_name("amber", &state) && state == SC_LED_DEGRADED);
+    CHECK(sc_led_state_from_name("red", &state) && state == SC_LED_ERROR);
+    CHECK(sc_led_state_from_name("off", &state) && state == SC_LED_OFF);
+
+    CHECK(!sc_led_state_from_name("blue", &state));
+    CHECK(!sc_led_state_from_name("", &state));
+    CHECK(!sc_led_state_from_name(NULL, &state));
+    CHECK(!sc_led_state_from_name("green", NULL));
+    /* undocumented spellings must not silently work */
+    CHECK(!sc_led_state_from_name("Green", &state));
+    CHECK(!sc_led_state_from_name("green ", &state));
+}
+
+/* Issue #7, case 1: while an override is in force the reported colour is the
+ * override, and the mode says so. The old code reported "off" because a manual
+ * paint stamped the state machine as OFF. */
+static void test_led_manual_override(void)
+{
+    sc_led_model_t m;
+    sc_led_model_init(&m, true);
+    CHECK(sc_led_model_shown(&m) == SC_LED_OFF);
+    CHECK_STR(sc_led_model_mode_name(&m), "auto");
+
+    CHECK(sc_led_model_set_auto(&m, SC_LED_OK)); /* off -> green */
+    CHECK(sc_led_model_shown(&m) == SC_LED_OK);
+    CHECK(!sc_led_model_set_auto(&m, SC_LED_OK)); /* same colour, no repaint */
+
+    CHECK(sc_led_model_set_manual(&m, true, SC_LED_ERROR));
+    CHECK(sc_led_model_shown(&m) == SC_LED_ERROR);
+    CHECK_STR(sc_led_model_mode_name(&m), "manual");
+
+    /* The automatic machine keeps running underneath; it must not paint over. */
+    CHECK(!sc_led_model_set_auto(&m, SC_LED_DEGRADED));
+    CHECK(sc_led_model_shown(&m) == SC_LED_ERROR);
+
+    /* Releasing the override restores the last automatic colour at once. */
+    CHECK(sc_led_model_set_manual(&m, false, SC_LED_OFF));
+    CHECK(sc_led_model_shown(&m) == SC_LED_DEGRADED);
+    CHECK_STR(sc_led_model_mode_name(&m), "auto");
+}
+
+/* Issue #7, case 2 -- the part the issue did not spot: releasing an override
+ * while the automatic state is still OFF used to leave the pixel showing the
+ * manual colour forever, because the painter skipped the repaint when its cached
+ * state had not changed. */
+static void test_led_manual_release_to_off(void)
+{
+    sc_led_model_t m;
+    sc_led_model_init(&m, true);
+
+    CHECK(!sc_led_model_set_auto(&m, SC_LED_OFF)); /* already off */
+    CHECK(sc_led_model_set_manual(&m, true, SC_LED_OK));
+    CHECK(sc_led_model_shown(&m) == SC_LED_OK);
+
+    /* Must ask for a repaint, and must land back on OFF. */
+    CHECK(sc_led_model_set_manual(&m, false, SC_LED_OFF));
+    CHECK(sc_led_model_shown(&m) == SC_LED_OFF);
+    CHECK_STR(sc_led_model_mode_name(&m), "auto");
+
+    /* Idempotent: releasing twice changes nothing and asks for nothing. */
+    CHECK(!sc_led_model_set_manual(&m, false, SC_LED_OFF));
+}
+
+/* A board without a working strip still has to answer /diag truthfully. */
+static void test_led_unavailable(void)
+{
+    sc_led_model_t m;
+    sc_led_model_init(&m, false);
+    CHECK(!m.available);
+    (void)sc_led_model_set_auto(&m, SC_LED_OK); /* no crash, state still tracked */
+    CHECK(sc_led_model_shown(&m) == SC_LED_OK);
+}
+
 int main(void)
 {
     test_json_escape();
@@ -1031,6 +1136,11 @@ int main(void)
     test_bug_utf8_truncation_mojibake();
     test_bug_unicode_trim();
     test_bug_health_trailing_garbage();
+    test_led_palette();
+    test_led_name_parsing();
+    test_led_manual_override();
+    test_led_manual_release_to_off();
+    test_led_unavailable();
     test_hysteresis();
     test_health();
     test_snapshot_empty();

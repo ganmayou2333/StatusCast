@@ -41,7 +41,8 @@ $sources = @(
     (Join-Path $root 'host_test\test_main.c'),
     (Join-Path $core 'sc_core.c'),
     (Join-Path $core 'sc_config.c'),
-    (Join-Path $core 'sc_json.c'),
+    (Join-Path $core 'sc_json.c')
+    (Join-Path $core 'sc_led.c'),
     (Join-Path $core 'sc_snapshot.c'),
     (Join-Path $core 'sc_wire_parse.c'),
     (Join-Path $core 'sc_display.c'),

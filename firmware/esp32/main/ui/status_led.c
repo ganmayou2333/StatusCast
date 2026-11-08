@@ -6,11 +6,23 @@
 static const char *TAG = "sc_led";
 
 #define STATUS_LED_GPIO 48
-#define STATUS_LED_BRIGHTNESS 24 /* 0..255: this sits on a desk, keep it dim */
 
 static led_strip_handle_t s_strip;
-static status_led_state_t s_state;
-static bool s_manual;
+static sc_led_model_t s_model;
+
+/* Paint whatever the model says is showing. No-op without a strip. */
+static void paint(void)
+{
+    if (s_strip == NULL) {
+        return;
+    }
+    uint8_t red = 0;
+    uint8_t green = 0;
+    uint8_t blue = 0;
+    sc_led_rgb(sc_led_model_shown(&s_model), &red, &green, &blue);
+    (void)led_strip_set_pixel(s_strip, 0, red, green, blue);
+    (void)led_strip_refresh(s_strip);
+}
 
 void status_led_init(void)
 {
@@ -34,74 +46,43 @@ void status_led_init(void)
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "status LED unavailable: %s", esp_err_to_name(err));
         s_strip = NULL;
+        sc_led_model_init(&s_model, false);
         return;
     }
     (void)led_strip_clear(s_strip);
-    s_state = STATUS_LED_OFF;
+    sc_led_model_init(&s_model, true);
 }
 
-void status_led_set_manual(bool enabled, unsigned red, unsigned green, unsigned blue)
+void status_led_set(sc_led_state_t state)
 {
-    s_manual = enabled;
-    if (s_strip == NULL) {
-        return;
+    if (sc_led_model_set_auto(&s_model, state)) {
+        paint();
     }
-    if (!enabled) {
-        return;
+}
+
+void status_led_set_manual(bool enabled, sc_led_state_t state)
+{
+    if (sc_led_model_set_manual(&s_model, enabled, state)) {
+        paint();
     }
-    (void)led_strip_set_pixel(s_strip, 0, red, green, blue);
-    (void)led_strip_refresh(s_strip);
-    s_state = STATUS_LED_OFF;
 }
 
 bool status_led_manual_active(void)
 {
-    return s_manual;
+    return s_model.manual;
 }
 
-void status_led_set(status_led_state_t state)
+sc_led_state_t status_led_shown(void)
 {
-    if (s_strip == NULL || state == s_state || s_manual) {
-        return;
-    }
-    uint8_t red = 0;
-    uint8_t green = 0;
-    switch (state) {
-    case STATUS_LED_OK:
-        green = STATUS_LED_BRIGHTNESS;
-        break;
-    case STATUS_LED_DEGRADED:
-        red = STATUS_LED_BRIGHTNESS / 2;
-        green = STATUS_LED_BRIGHTNESS;
-        break;
-    case STATUS_LED_ERROR:
-        red = STATUS_LED_BRIGHTNESS;
-        break;
-    case STATUS_LED_OFF:
-    default:
-        break;
-    }
-    (void)led_strip_set_pixel(s_strip, 0, red, green, 0);
-    (void)led_strip_refresh(s_strip);
-    s_state = state;
+    return sc_led_model_shown(&s_model);
 }
 
-status_led_state_t status_led_get(void)
+const char *status_led_mode_name(void)
 {
-    return s_state;
+    return sc_led_model_mode_name(&s_model);
 }
 
-const char *status_led_name(status_led_state_t state)
+bool status_led_available(void)
 {
-    switch (state) {
-    case STATUS_LED_OK:
-        return "green";
-    case STATUS_LED_DEGRADED:
-        return "amber";
-    case STATUS_LED_ERROR:
-        return "red";
-    case STATUS_LED_OFF:
-    default:
-        return "off";
-    }
+    return s_model.available;
 }

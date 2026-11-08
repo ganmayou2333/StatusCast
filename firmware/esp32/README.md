@@ -45,7 +45,7 @@ Display:   SSD1315 128×64, I2C, SSD1306 兼容指令集
 
 > 不要接 5V：模块逻辑电平会跟着 VCC 走，5V 上拉对 ESP32 不安全。
 
-**板载状态灯**：WS2812 数据脚 **GPIO48**，已驱动。四种状态由主循环计算：绿=正常、琥珀=降级（有 `读取超时` 条目）、红=WiFi 断开或严重错误、灭=未启动。也可以用 `POST /control/led` 手动覆盖（只存在 RAM，重启即失效）。见 [ESP32 控制面](../../docs/guide/control-api.md)。
+**板载状态灯**：WS2812 数据脚 **GPIO48**，已驱动。四种状态由主循环计算：绿=正常、琥珀=降级（有 `读取超时` 条目）、红=WiFi 断开或严重错误、灭=未启动。也可以用 `POST /control/led` 手动覆盖（只存在 RAM，重启即失效）；`/diag` 与 `/control/status` 的 `led` 报的是**实际显示的颜色**，另有 `ledMode` 区分 `auto` / `manual`、`ledAvailable` 说明灯带是否初始化成功。见 [ESP32 控制面](../../docs/guide/control-api.md)。
 
 **板载温湿度**：DHT20 在 I2C `0x38`，与 OLED 共用总线（SDA=GPIO8 / SCL=GPIO9）。每轮采一次，出现在 `GET /diag` 的 `sensor` 字段和屏幕总览页。读不到只是 `ok:false`，不影响其它功能。没有对应的配置键。
 
@@ -149,7 +149,7 @@ idf.py -p COM3 -b 460800 flash monitor
 
 - `GET /status/` → 200 快照；未就绪 → 503 `{"error":"status snapshot not ready"}`
 - `GET /health` → 200 `{"ok":true,"deviceCount":N,"generatedAt":G,"schema":3}`；未就绪 → 503 四键全 null
-- `GET /diag` → 200 只读诊断：`{"deviceCount","generatedAt","roundMillis","i2c":[…],"sensor":{"ok","temperatureC","humidityPct"},"led"}`；未就绪 → 503
+- `GET /diag` → 200 只读诊断：`{"deviceCount","generatedAt","roundMillis","i2c":[…],"sensor":{"ok","temperatureC","humidityPct"},"led","ledMode","ledAvailable"}`；未就绪 → 503
 - 非 GET（含未知路径）→ 405 `{"error":"method not allowed"}`；其余路径 → 404 `{"error":"not found"}`
 - 响应头固定带 `Access-Control-Allow-Origin: *`、`Cache-Control: no-store`、
   `Content-Type: application/json; charset=utf-8`

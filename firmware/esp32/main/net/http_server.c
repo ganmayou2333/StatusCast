@@ -95,18 +95,19 @@ static esp_err_t handle_diag(httpd_req_t *req)
 {
     char i2c[128];
     app_sensor_t sensor = app_state_sensor();
-    char body[448];
+    char body[512]; /* i2c up to 128 bytes plus the led fields */
     int length = snprintf(body, sizeof(body),
                           "{\"deviceCount\":%d,\"generatedAt\":%lld,"
                           "\"roundMillis\":%u,\"i2c\":[%s],"
                           "\"sensor\":{\"ok\":%s,\"temperatureC\":%.1f,"
-                          "\"humidityPct\":%.1f},\"led\":\"%s\"}",
+                          "\"humidityPct\":%.1f},\"led\":\"%s\","
+                          "\"ledMode\":\"%s\",\"ledAvailable\":%s}",
                           app_state_device_count(), (long long)app_state_generated_at(),
                           (unsigned)app_state_last_round_millis(),
                           app_state_i2c_list(i2c, sizeof(i2c)),
                           sensor.ok ? "true" : "false", sensor.temperature_c,
-                          sensor.humidity_pct,
-                          status_led_name(status_led_get()));
+                          sensor.humidity_pct, sc_led_name(status_led_shown()),
+                          status_led_mode_name(), status_led_available() ? "true" : "false");
     if (length <= 0 || (size_t)length >= sizeof(body)) {
         return respond_literal(req, "503 Service Unavailable", BODY_NOT_READY);
     }

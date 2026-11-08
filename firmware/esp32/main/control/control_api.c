@@ -146,13 +146,13 @@ static esp_err_t h_status(httpd_req_t *req)
     app_network_t network = app_state_network();
     app_sensor_t sensor = app_state_sensor();
     char i2c[128];
-    char body[768];
+    char body[1024]; /* led/ledMode/ledAvailable plus a maximal pcUrl */
     int length = snprintf(
         body, sizeof(body),
         "{\"uptimeSec\":%lld,\"wifi\":{\"connected\":%s,\"ip\":\"%s\",\"rssi\":%d},"
         "\"devices\":%d,\"generatedAt\":%lld,\"roundMillis\":%u,"
         "\"sensor\":{\"ok\":%s,\"temperatureC\":%.1f,\"humidityPct\":%.1f},"
-        "\"i2c\":[%s],\"led\":\"%s\","
+        "\"i2c\":[%s],\"led\":\"%s\",\"ledMode\":\"%s\",\"ledAvailable\":%s,"
         "\"config\":{\"refreshSeconds\":%d,\"consoles\":%d,\"bleDevices\":%d,"
         "\"aliases\":%d,\"pcFeed\":%s,\"pcUrl\":\"%s\"},"
         "\"configRollbackPending\":%s}",
@@ -160,7 +160,8 @@ static esp_err_t h_status(httpd_req_t *req)
         network.ip, network.rssi, app_state_device_count(),
         (long long)app_state_generated_at(), (unsigned)app_state_last_round_millis(),
         sensor.ok ? "true" : "false", sensor.temperature_c, sensor.humidity_pct,
-        app_state_i2c_list(i2c, sizeof(i2c)), status_led_name(status_led_get()),
+        app_state_i2c_list(i2c, sizeof(i2c)), sc_led_name(status_led_shown()),
+        status_led_mode_name(), status_led_available() ? "true" : "false",
         cfg->refresh_seconds, cfg->console_count, cfg->ble_count, cfg->aliases.count,
         cfg->pc_enabled ? "true" : "false", cfg->pc_url.has ? cfg->pc_url.v : "",
         config_guard_pending() ? "true" : "false");
@@ -300,23 +301,17 @@ static esp_err_t h_led(httpd_req_t *req)
 
     bool automatic = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "auto"));
     const cJSON *color = cJSON_GetObjectItemCaseSensitive(root, "color");
-    const char *name = "auto";
+    sc_led_state_t state = SC_LED_OFF;
+    const char *audit_name = "auto";
     if (automatic) {
-        status_led_set_manual(false, 0, 0, 0);
+        /* Hands control back and repaints the automatic colour immediately. */
+        status_led_set_manual(false, SC_LED_OFF);
+    } else if (cJSON_IsString(color) && sc_led_state_from_name(color->valuestring, &state)) {
+        audit_name = color->valuestring;
+        status_led_set_manual(true, state);
     } else if (cJSON_IsString(color)) {
-        name = color->valuestring;
-        if (strcmp(name, "green") == 0) {
-            status_led_set_manual(true, 0, 32, 0);
-        } else if (strcmp(name, "amber") == 0) {
-            status_led_set_manual(true, 16, 32, 0);
-        } else if (strcmp(name, "red") == 0) {
-            status_led_set_manual(true, 32, 0, 0);
-        } else if (strcmp(name, "off") == 0) {
-            status_led_set_manual(true, 0, 0, 0);
-        } else {
-            cJSON_Delete(root);
-            return send_json(req, "400 Bad Request", "{\"error\":\"unknown color\"}");
-        }
+        cJSON_Delete(root);
+        return send_json(req, "400 Bad Request", "{\"error\":\"unknown color\"}");
     } else {
         cJSON_Delete(root);
         return send_json(req, "400 Bad Request", "{\"error\":\"color or auto required\"}");
@@ -325,10 +320,13 @@ static esp_err_t h_led(httpd_req_t *req)
 
     char ip[48];
     peer_ip(req, ip, sizeof(ip));
-    audit_record("led", name, ip);
-    char response[64];
-    (void)snprintf(response, sizeof(response), "{\"ok\":true,\"led\":\"%s\"}",
-                   automatic ? "auto" : name);
+    audit_record("led", audit_name, ip);
+
+    /* Report what the pixel is doing and who decided it, not what was asked:
+     * those differ as soon as a manual colour is in force. */
+    char response[96];
+    (void)snprintf(response, sizeof(response), "{\"ok\":true,\"led\":\"%s\",\"ledMode\":\"%s\"}",
+                   sc_led_name(status_led_shown()), status_led_mode_name());
     return send_json(req, "200 OK", response);
 }
 

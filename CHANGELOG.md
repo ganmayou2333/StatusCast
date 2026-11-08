@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
 
+### Fixed — ESP32 灯带的上报与恢复（issue #7）
+
+- **手动覆盖期间上报的颜色是假的**：`POST /control/led` 把状态机标成 `OFF`，于是
+  `/diag` 与 `/control/status` 一边显示像素亮着、一边报 `"led":"off"`。
+  现在 `led` 报的是**实际显示的颜色**，另加 `ledMode`（`auto` / `manual`）与
+  `ledAvailable`（灯带是否初始化成功）两个字段——「像素是什么颜色」和「谁在做主」
+  不再挤在同一个值里。
+- **关闭覆盖可能让像素永久卡住**：`{"auto":true}` 只清了标志位，没有重绘；而
+  `status_led_set()` 在状态未变时会跳过重绘，所以只要自动状态当时也是 `off`，
+  像素就一直停在手动颜色上。现在两个 setter 都返回「是否需要重绘」，关闭覆盖会
+  **当场按当前自动状态重绘**。
+- 顺带把调色板与状态判定从 `ui/status_led.c` 抽到不依赖 ESP-IDF 的 `core/sc_led.c`：
+  颜色表、名字解析、auto/manual 策略现在都能在 host 上测。`POST /control/led` 的四个
+  颜色名也由同一张表解析，不再在 handler 里重复写 RGB 常量。
+- `/control/status` 与 `/diag` 的响应缓冲加了余量（768→1024、448→512）。
+
 ### Fixed — ESP32 固件（由 bug hunt 发现，见 `docs/test-reports/v3.4.0-bug-hunt.md`）
 
 - **快照容量**：渲染缓冲、`/status/` 响应副本与路由表槽位原本是三个互不知情的数字，

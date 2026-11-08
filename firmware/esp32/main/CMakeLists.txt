@@ -12,6 +12,7 @@ idf_component_register(
         "core/sc_core.c"
         "core/sc_display.c"
         "core/sc_json.c"
+        "core/sc_led.c"
         "core/sc_snapshot.c"
         "core/sc_wire_parse.c"
         "control/audit.c"
