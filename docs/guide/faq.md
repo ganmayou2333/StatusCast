@@ -176,4 +176,13 @@ API 和 NekoTool 都不受影响。想要中文屏显示需要额外嵌一个点
 
 ### 串口号每次插拔都变
 
-正常现象。CH343 的 COM 号由 Windows 重新枚举，本机实测从 COM3 变成过 COM4。所有脚本都接受 `-Port`，以设备管理器里的实际端口为准。
+正常现象。USB 串口的 COM 号由 Windows 重新枚举，本机实测从 COM3 变成过 COM4。
+
+所以 `flash.ps1` / `monitor.ps1` / `serial-command.ps1` 的 `-Port` 默认是 `auto`：按 USB VID 找板子
+（`303A` = Espressif 原生 USB、`1A86:55D3` = CH343、`1A86:7523` = CH340），不用记端口号。
+
+- 只有一块板 → 直接用；
+- 多块板 → 拒绝并列出候选，让你显式 `-Port COMx`（猜错会复位错的板子，所以宁可不猜）；
+- 显式给一个存在但不像板子的端口 → 允许但**警告**，因为这些工具打开端口时会拉 DTR/RTS 复位目标。
+
+解析规则见 `firmware/esp32/tools/ports.ps1`，自检脚本 `tools/test-ports.ps1` 覆盖八种情况。

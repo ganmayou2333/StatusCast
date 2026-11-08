@@ -29,7 +29,8 @@ NekoTrak 数据，最后以**与 daemon 字节级兼容**的 schema-3 JSON 对�
 Chip:      ESP32-S3 (QFN56) rev v0.2, 双核 240MHz + LP 核
 Memory:    Embedded PSRAM 8MB (AP_3v3)
 Flash:     16MB (quad, 3.3V)
-USB-UART:  CH343 (VID_1A86&PID_55D3) → COM3
+USB:       ESP32-S3 原生 USB-Serial-JTAG (VID_303A&PID_1001) → 枚举为 CDC 串口
+           另一路 CH343 (VID_1A86&PID_55D3) 是板上的第二个 USB 口，插哪个就走哪个
 MAC:       dc:da:0c:xx:xx:xx
 Display:   SSD1315 128×64, I2C, SSD1306 兼容指令集
 ```
@@ -63,15 +64,18 @@ Display:   SSD1315 128×64, I2C, SSD1306 兼容指令集
 # 构建
 .\tools\build.bat build
 
-# 烧录 + 串口监视
-.\tools\flash.ps1 -Port COM3 -Monitor
+# 烧录 + 串口监视（自动找板子）
+.\tools\flash.ps1 -Monitor
 
 # 只开串口监视
-.\tools\monitor.ps1 -Port COM3
+.\tools\monitor.ps1
 ```
 
-> 串口号会在重新插拔后变化（本机实测从 COM3 变成 COM4）。以设备管理器里 CH343 的端口为准，
-> 所有命令都接受 `-Port COMx`。
+> **串口号会在重新插拔后变化**（本机实测 COM3 → COM4），所以 `-Port` 默认是 `auto`：
+> 按 USB VID 自动找板子（`303A` = Espressif 原生 USB，`1A86:55D3` = CH343，`1A86:7523` = CH340）。
+> 只有一块板时直接用；多块会拒绝并列出候选，让你显式 `-Port COMx`。
+> 显式指定一个**存在但不是板子**的端口会被允许但**警告**——这些工具打开端口时会拉 DTR/RTS 复位目标，
+> 指错端口就是复位别的设备。解析规则见 [`tools/ports.ps1`](tools/ports.ps1)。
 
 `tools\build.bat` 内部会调用 IDF 的 `export.bat`（并先清掉 `MSYSTEM`，因为 ESP-IDF
 拒绝在 MSYS/Mingw 环境里运行），不污染全局环境。手动等价命令：
@@ -133,11 +137,11 @@ idf.py -p COM3 -b 460800 flash monitor
 
 **WiFi 凭据只存 NVS**，不写 LittleFS、不进仓库、不进日志。
 
-首次配网（串口命令行，`COM3` 为例）：
+首次配网（串口命令行，端口自动发现）：
 
 ```powershell
-.\tools\serial-command.ps1 -Port COM3 -Lines 'net scan'      # 先确认能看到 2.4G 热点
-.\tools\serial-command.ps1 -Port COM3 -Lines 'net ssid <ssid>','net pass <password>'
+.\tools\serial-command.ps1 -Lines 'net scan'      # 先确认能看到 2.4G 热点
+.\tools\serial-command.ps1 -Lines 'net ssid <ssid>','net pass <password>'
 ```
 
 > ESP32-S3 只有 2.4GHz 射频。名字带 `-5g` 的 SSID 不会出现在 `net scan` 里，也无法连接；
@@ -210,7 +214,7 @@ cd G:\StatusCast\NekoTool
 | 现象 | 处理 |
 | --- | --- |
 | `idf.py: command not found` | 先跑 `.\tools\build.bat build`，它会 source `export.ps1` |
-| 串口打不开 / `Failed to connect` | 确认设备管理器里是 CH343 的 COM 口，烧录时按一下 BOOT 再试 |
+| 串口打不开 / `Failed to connect` | 先跑 `-Port auto` 让脚本自己找；仍失败时确认设备管理器「端口 (COM 和 LPT)」里有条目，烧录时按一下 BOOT 再试 |
 | 屏全黑 | 检查 SDA/SCL 与地址（`0x3C`/`0x3D`），用串口 `i2c scan` 确认能看到 `0x3C`/`0x38` |
 | `/control/audit`、`/control/coredump` 返回 404 | 旧固件的 handler 表槽位不足，升级到含 `f889d92` 的版本重新烧录 |
 | `/status/` 一直 503 | 看串口是否 WiFi 未连上 / 第一轮采集未完成 |

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Planned: AMS media metadata, Discord RPC adapter, MSIX packaging and login autostart.
 
+### Fixed — ESP32 串口工具不再猜端口（issue #5）
+
+- `flash.ps1` / `monitor.ps1` / `serial-command.ps1` 的 `-Port` 默认值从 `COM3` 改成
+  `auto`。串口号每次插拔都会变（本机实测 COM3 → COM4），而写死一个数字有两种坏结果：
+  命令失败，或者**成功作用在错的端口上**——这些工具打开端口时会拉 DTR/RTS 复位目标板。
+- 新增 `tools/ports.ps1`：按 USB VID 找板子（`303A` = Espressif 原生 USB-Serial-JTAG、
+  `1A86:55D3` = CH343、`1A86:7523` = CH340）。只有一块板时直接用；多块板**拒绝并列候选**，
+  而不是替用户猜；显式指定一个存在但不像板子的端口会**警告**「打开它会复位别的设备」。
+  端口不存在时报错并列出本机实际端口，附一句「用 -Port auto」。
+- 顺带修正一处硬件认知错误：参考板实际走的是 **ESP32-S3 原生 USB-Serial-JTAG
+  (VID_303A&PID_1001)**，不是文档原先写的 CH343；CH343 是同一块板上另一个 USB 口。
+  只认 CH343/CH340 会让 `auto` 在真板上直接找不到设备。
+- 新增 `tools/test-ports.ps1`：注入候选设备的自检，覆盖八种情况（单板、CH343、无板、
+  多板、显式端口不存在、显式外设端口、小写 com4、非 COM 值），`8 checks, 0 failures`。
+
 ### Fixed — ESP32 灯带的上报与恢复（issue #7）
 
 - **手动覆盖期间上报的颜色是假的**：`POST /control/led` 把状态机标成 `OFF`，于是
